@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "Пример каталога сборок (демонстрационный)",
+  "packs": [
+    {
+      "repo": "AbiBok89/abi_tfg",
+      "branch": "main",
+      "path": "launcher/pack.json"
+    },
+    {
+      "repo": "example-owner/example-fabric-pack",
+      "branch": "main",
+      "path": "launcher/pack.json"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "packId": "example-fabric-pack",
+  "version": "1.0.0-example",
+  "createdAt": "2026-11-17T00:00:00.000Z",
+  "minecraft": "1.21.1",
+  "loader": {
+    "type": "fabric",
+    "version": "0.16.10"
+  },
+  "java": {
+    "major": 21
+  },
+  "archives": [
+    {
+      "id": "pack-part-01",
+      "url": "https://github.com/EXAMPLE_OWNER/EXAMPLE_PACK_REPO/releases/download/v1.0.0-example/pack-part-01.zip",
+      "size": 102400,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "files": [
+    {
+      "path": "mods/example-mod-1.0.0.jar",
+      "size": 5242880,
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "managed",
+      "required": true,
+      "source": {
+        "url": "https://github.com/EXAMPLE_OWNER/EXAMPLE_PACK_REPO/releases/download/v1.0.0-example/1111111111-example-mod-1.0.0.jar"
+      }
+    },
+    {
+      "path": "config/example-client.toml",
+      "size": 512,
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "mode": "managed",
+      "required": false,
+      "source": {
+        "archive": "pack-part-01",
+        "entry": "config/example-client.toml"
+      }
+    },
+    {
+      "path": "options.txt",
+      "size": 256,
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "mode": "initial",
+      "required": false,
+      "source": {
+        "archive": "pack-part-01",
+        "entry": "options.txt"
+      }
+    }
+  ]
+}

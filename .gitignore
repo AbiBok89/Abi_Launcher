@@ -1,0 +1,10 @@
+node_modules/
+/out/
+/dist/
+/release/
+*.log
+.vite/
+coverage/
+tests/.tmp/
+tools/publish/dist/
+ТЗ_для_лаунчера.md

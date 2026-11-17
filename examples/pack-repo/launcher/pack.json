@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "example-fabric-pack",
+  "name": "Example Fabric Pack (Демо)",
+  "summary": "Демонстрационная карточка авторской сборки на Fabric.",
+  "description": "Это пример файла launcher/pack.json с демонстрационными значениями. Замените ссылки, версии и описание на реальные данные вашей сборки.",
+  "cover": "launcher/cover.png",
+  "version": "1.0.0-example",
+  "minecraft": "1.21.1",
+  "loader": {
+    "type": "fabric",
+    "version": "0.16.10"
+  },
+  "recommendedMemoryMb": 4096,
+  "minMemoryMb": 2048,
+  "manifestUrl": "https://github.com/EXAMPLE_OWNER/EXAMPLE_PACK_REPO/releases/download/v1.0.0-example/manifest.json",
+  "server": {
+    "name": "Демо-сервер друзей",
+    "host": "mc.example.invalid",
+    "port": 25565
+  },
+  "news": "launcher/news.json"
+}

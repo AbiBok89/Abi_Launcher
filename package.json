@@ -1,0 +1,53 @@
+{
+  "name": "abilauncher",
+  "productName": "AbiLauncher",
+  "version": "0.1.0",
+  "description": "AbiLauncher — лаунчер Minecraft Java Edition для авторских сборок",
+  "author": "AbiBok89",
+  "license": "MIT",
+  "private": true,
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "pack-tool": "tsx tools/publish/build-manifest.ts"
+  },
+  "overrides": {
+    "@xmcl/unzip": "2.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "yazl": "^3.3.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "electron@45.3.4": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "dependencies": {
+    "@xmcl/core": "^2.16.3",
+    "@xmcl/installer": "^6.3.7",
+    "tar": "^7.5.23",
+    "yauzl": "^3.4.0",
+    "zod": "^4.6.7"
+  }
+}
