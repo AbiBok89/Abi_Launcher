@@ -344,11 +344,11 @@ export function App() {
 
   return (
     <div className="window-shell">
-      <header className="titlebar">
-        <div className="titlebar-brand">
+      <header className="titlebar" data-tauri-drag-region>
+        <div className="titlebar-brand" data-tauri-drag-region>
           <AbiLogo size={20} />
-          <span className="titlebar-name">AbiLauncher</span>
-          <span className="titlebar-ver">v{appInfo?.version ?? '0.1.1'}</span>
+          <span className="titlebar-name" data-tauri-drag-region>AbiLauncher</span>
+          <span className="titlebar-ver" data-tauri-drag-region>v{appInfo?.version ?? '0.2.0'}</span>
         </div>
 
         <div className="titlebar-right">

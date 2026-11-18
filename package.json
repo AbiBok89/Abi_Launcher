@@ -1,26 +1,30 @@
 {
   "name": "abilauncher",
   "productName": "AbiLauncher",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "AbiLauncher — лаунчер Minecraft Java Edition для авторских сборок",
   "author": "AbiBok89",
   "license": "MIT",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "tauri dev",
+    "dev:renderer": "vite --config vite.renderer.config.ts",
+    "build": "vite build --config vite.renderer.config.ts",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "tauri": "tauri",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "dist:win": "electron-vite build && electron-builder --win",
-    "dist:linux": "electron-vite build && electron-builder --linux",
+    "dist:win": "tauri build",
+    "dist:linux": "tauri build",
     "pack-tool": "tsx --tsconfig tsconfig.node.json tools/publish/build-manifest.ts"
   },
   "overrides": {
     "@xmcl/unzip": "2.1.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.5",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -44,6 +48,9 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "@xmcl/core": "^2.16.3",
     "@xmcl/installer": "^6.3.7",
     "tar": "^7.5.23",
