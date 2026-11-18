@@ -338,9 +338,16 @@ pub fn build_launch_arguments(
     if seen_cp.insert(client_jar.clone()) {
         cp_paths.push(client_jar);
     }
-    let classpath = cp_paths.join(sep);
+    let classpath = cp_paths
+        .iter()
+        .map(|p| p.replace('\\', "/"))
+        .collect::<Vec<_>>()
+        .join(sep);
 
-    let assets_root = shared_dir.join("assets").to_string_lossy().into_owned();
+    let assets_root = shared_dir
+        .join("assets")
+        .to_string_lossy()
+        .replace('\\', "/");
     let assets_index_name = resolved
         .asset_index
         .as_ref()
@@ -349,31 +356,53 @@ pub fn build_launch_arguments(
         .unwrap_or_else(|| resolved.assets.clone());
 
     let undashed_uuid = profile.uuid.replace('-', "");
-    let lib_dir_str = shared_dir.join("libraries").to_string_lossy().into_owned();
+    let lib_dir_str = shared_dir
+        .join("libraries")
+        .to_string_lossy()
+        .replace('\\', "/");
 
-    let mut vars: HashMap<&str, String> = HashMap::new();
-    vars.insert("natives_directory", natives_dir.to_string_lossy().into_owned());
-    vars.insert("launcher_name", "AbiLauncher".to_string());
-    vars.insert("launcher_version", launcher_version.to_string());
-    vars.insert("classpath", classpath);
-    vars.insert("library_directory", lib_dir_str);
-    vars.insert("classpath_separator", sep.to_string());
-    vars.insert("version_name", resolved.id.clone());
-    vars.insert("auth_player_name", profile.name.clone());
-    vars.insert("version_type", resolved.version_type.clone());
-    vars.insert("game_directory", instance_dir.to_string_lossy().into_owned());
-    vars.insert("assets_root", assets_root);
-    vars.insert("game_assets", shared_dir.join("assets").join("virtual").join("legacy").to_string_lossy().into_owned());
-    vars.insert("assets_index_name", assets_index_name);
-    vars.insert("auth_uuid", undashed_uuid);
-    vars.insert("auth_access_token", "0".to_string());
-    vars.insert("auth_session", "0".to_string());
-    vars.insert("user_type", "msa".to_string());
-    vars.insert("clientid", "0".to_string());
-    vars.insert("auth_xuid", "0".to_string());
-    vars.insert("user_properties", "{}".to_string());
-    vars.insert("resolution_width", resolution.width.max(320).to_string());
-    vars.insert("resolution_height", resolution.height.max(240).to_string());
+    let mut game_vars: HashMap<&str, String> = HashMap::new();
+    game_vars.insert(
+        "natives_directory",
+        natives_dir.to_string_lossy().replace('\\', "/"),
+    );
+    game_vars.insert("launcher_name", "AbiLauncher".to_string());
+    game_vars.insert("launcher_version", launcher_version.to_string());
+    game_vars.insert("classpath", classpath);
+    game_vars.insert("library_directory", lib_dir_str);
+    game_vars.insert("classpath_separator", sep.to_string());
+    game_vars.insert("version_name", resolved.id.clone());
+    game_vars.insert("auth_player_name", profile.name.clone());
+    game_vars.insert("version_type", resolved.version_type.clone());
+    game_vars.insert(
+        "game_directory",
+        instance_dir.to_string_lossy().replace('\\', "/"),
+    );
+    game_vars.insert("assets_root", assets_root);
+    game_vars.insert(
+        "game_assets",
+        shared_dir
+            .join("assets")
+            .join("virtual")
+            .join("legacy")
+            .to_string_lossy()
+            .replace('\\', "/"),
+    );
+    game_vars.insert("assets_index_name", assets_index_name);
+    game_vars.insert("auth_uuid", undashed_uuid);
+    game_vars.insert("auth_access_token", "0".to_string());
+    game_vars.insert("auth_session", "0".to_string());
+    game_vars.insert("user_type", "msa".to_string());
+    game_vars.insert("clientid", "0".to_string());
+    game_vars.insert("auth_xuid", "0".to_string());
+    game_vars.insert("user_properties", "{}".to_string());
+    game_vars.insert("resolution_width", resolution.width.max(320).to_string());
+    game_vars.insert("resolution_height", resolution.height.max(240).to_string());
+
+    // Для JVM-аргументов (в т.ч. Forge/NeoForge -DignoreList=${version_name}.jar)
+    // подставляется имя ванильного jar (minecraft_version), а не полного version id.
+    let mut jvm_vars = game_vars.clone();
+    jvm_vars.insert("version_name", resolved.minecraft_version.clone());
 
     let mut features = Vec::new();
     if resolution.width > 0 && resolution.height > 0 {
@@ -382,44 +411,57 @@ pub fn build_launch_arguments(
 
     let mut args = Vec::new();
 
-    // 1. Память и дополнительные JVM-аргументы
+    // 1. Память
     args.push(format!("-Xms{min_mem}M"));
     args.push(format!("-Xmx{max_mem}M"));
-    args.extend(build_extra_jvm_args(extra_jvm_args_raw, shared_dir));
 
-    // 2. Log4j конфиг (если указан версией)
+    // 2. JVM аргументы из version.json (или базовые для legacy <= 1.12.2)
+    if resolved.jvm_args.is_empty() {
+        args.push(format!(
+            "-Djava.library.path={}",
+            jvm_vars["natives_directory"]
+        ));
+        args.push("-cp".to_string());
+        args.push(jvm_vars["classpath"].clone());
+    } else {
+        for raw_arg in collect_conditional_args(&resolved.jvm_args, &features) {
+            args.push(apply_placeholders(&raw_arg, &jvm_vars));
+        }
+    }
+
+    // 3. Log4j конфиг (если указан версией). На Windows Log4j ожидает системный путь (или URL), иначе трактует "E:/" как схему.
     if let Some(ref log_client) = resolved.logging {
-        let log_cfg_path = shared_dir
-            .join("assets")
-            .join("log_configs")
-            .join(&log_client.file.id)
-            .to_string_lossy()
-            .into_owned();
+        let log_cfg_path = abs_lexical(
+            &shared_dir
+                .join("assets")
+                .join("log_configs")
+                .join(&log_client.file.id),
+        )
+        .to_string_lossy()
+        .into_owned();
         args.push(log_client.argument.replace("${path}", &log_cfg_path));
     }
 
-    // 3. JVM аргументы из version.json (или базовые для legacy <= 1.12.2)
-    if resolved.jvm_args.is_empty() {
-        args.push(format!("-Djava.library.path={}", natives_dir.display()));
-        args.push("-cp".to_string());
-        args.push(vars["classpath"].clone());
-    } else {
-        for raw_arg in collect_conditional_args(&resolved.jvm_args, &features) {
-            args.push(apply_placeholders(&raw_arg, &vars));
+    // 4. Дополнительные JVM-аргументы (не дублируем -DlibraryDirectory если он уже в version.json)
+    let has_lib_dir = args.iter().any(|a| a.starts_with("-DlibraryDirectory="));
+    for extra in build_extra_jvm_args(extra_jvm_args_raw, shared_dir) {
+        if has_lib_dir && extra.starts_with("-DlibraryDirectory=") {
+            continue;
         }
+        args.push(extra);
     }
 
-    // 4. Main Class
+    // 5. Main Class
     args.push(resolved.main_class.clone());
 
-    // 5. Game args
+    // 6. Game args
     if !resolved.game_args.is_empty() {
         for raw_arg in collect_conditional_args(&resolved.game_args, &features) {
-            args.push(apply_placeholders(&raw_arg, &vars));
+            args.push(apply_placeholders(&raw_arg, &game_vars));
         }
     } else if let Some(ref legacy) = resolved.legacy_args {
         for tok in legacy.split_whitespace() {
-            args.push(apply_placeholders(tok, &vars));
+            args.push(apply_placeholders(tok, &game_vars));
         }
         if resolution.width > 0 && resolution.height > 0 {
             args.push("--width".to_string());

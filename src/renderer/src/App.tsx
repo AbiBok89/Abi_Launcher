@@ -348,7 +348,7 @@ export function App() {
         <div className="titlebar-brand" data-tauri-drag-region>
           <AbiLogo size={20} />
           <span className="titlebar-name" data-tauri-drag-region>AbiLauncher</span>
-          <span className="titlebar-ver" data-tauri-drag-region>v{appInfo?.version ?? '0.2.0'}</span>
+          <span className="titlebar-ver" data-tauri-drag-region>v{appInfo?.version ?? '0.2.1'}</span>
         </div>
 
         <div className="titlebar-right">

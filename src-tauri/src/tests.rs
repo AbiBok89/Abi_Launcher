@@ -1,13 +1,15 @@
 use crate::catalog_service::parse_and_validate_manifest;
 use crate::error::CancelToken;
 use crate::game_launcher::{
-    build_extra_jvm_args, parse_jvm_args, supports_legacy_server_arg, supports_quick_play,
+    build_extra_jvm_args, build_launch_arguments, parse_jvm_args, supports_legacy_server_arg,
+    supports_quick_play,
 };
 use crate::github::{parse_repo_input, raw_url};
 use crate::launcher_updater::{
     compare_semver, parse_sha256_digest, select_launcher_asset, GitHubReleaseAsset,
 };
-use crate::mc_version::LibraryInfo;
+use crate::mc_version::{LibraryInfo, LoggingClient, LoggingClientFile, ResolvedVersion};
+use crate::minecraft_installer::PreparedRuntime;
 use crate::pack_updater::{
     local_manifest_path, plan_pack_sync, state_file_path, ManagedFileRecord, PackInstanceState,
     PROTECTED_USER_GLOBS,
@@ -15,7 +17,8 @@ use crate::pack_updater::{
 use crate::paths::{check_relative_path, matches_any, LAUNCHER_META_DIR};
 use crate::storage::{compute_default_memory_mb, offline_uuid_from_name, validate_nickname};
 use crate::types::{
-    ConflictKind, FileMode, InstallMode, Loader, ManifestFile, ManifestFileSource, ManifestJson,
+    ConflictKind, FileMode, InstallMode, JavaInfoView, Loader, ManifestFile, ManifestFileSource,
+    ManifestJson, Profile, Resolution,
 };
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
@@ -340,4 +343,94 @@ async fn pack_updater_plan_conflicts_and_extra_mods() {
     assert!(!plan.warnings.is_empty()); // extra player-addon.jar warning
 
     let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn forge_launch_args_use_minecraft_version_in_ignore_list_and_full_id_in_game_args() {
+    let runtime = PreparedRuntime {
+        resolved: ResolvedVersion {
+            id: "1.20.1-forge-47.4.13".to_string(),
+            minecraft_version: "1.20.1".to_string(),
+            main_class: "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string(),
+            version_type: "release".to_string(),
+            assets: "5".to_string(),
+            asset_index: None,
+            downloads: HashMap::new(),
+            libraries: Vec::new(),
+            jvm_args: vec![
+                serde_json::json!("-DignoreList=client-extra,fmlcore,forge-,${version_name}.jar"),
+                serde_json::json!("-DlibraryDirectory=${library_directory}"),
+                serde_json::json!("-cp"),
+                serde_json::json!("${classpath}"),
+            ],
+            game_args: vec![
+                serde_json::json!("--version"),
+                serde_json::json!("${version_name}"),
+                serde_json::json!("--gameDir"),
+                serde_json::json!("${game_directory}"),
+            ],
+            legacy_args: None,
+            logging: Some(LoggingClient {
+                argument: "-Dlog4j.configurationFile=${path}".to_string(),
+                file: LoggingClientFile {
+                    id: "client-1.12.xml".to_string(),
+                    sha1: String::new(),
+                    size: 0,
+                    url: String::new(),
+                },
+            }),
+            java_major: Some(17),
+        },
+        java: JavaInfoView {
+            path: "E:/Games/Sborki/runtimes/java-17/bin/java.exe".to_string(),
+            version: "17.0.15".to_string(),
+            major_version: 17,
+            managed: true,
+        },
+        shared_dir: Path::new("E:/Games/Sborki/shared").to_path_buf(),
+        version_id: "1.20.1-forge-47.4.13".to_string(),
+    };
+
+    let profile = Profile {
+        id: "p1".to_string(),
+        name: "PlayerOne".to_string(),
+        uuid: "e2a6ed12-cd91-3221-b5be-a3304b8f74fe".to_string(),
+        created_at: "2026-11-18T00:00:00Z".to_string(),
+    };
+    let resolution = Resolution {
+        width: 1280,
+        height: 720,
+        fullscreen: false,
+    };
+
+    let args = build_launch_arguments(
+        &runtime,
+        Path::new("E:/Games/Sborki/instances/tfg"),
+        Path::new("E:/Games/Sborki/shared/versions/1.20.1-forge-47.4.13/natives"),
+        &profile,
+        8192,
+        &resolution,
+        None,
+        None,
+        false,
+        "0.2.1",
+    );
+
+    assert!(args.contains(&"-DignoreList=client-extra,fmlcore,forge-,1.20.1.jar".to_string()));
+    assert!(!args.iter().any(|a| a.contains("1.20.1-forge-47.4.13.jar")));
+    assert_eq!(
+        args.iter().filter(|a| a.starts_with("-DlibraryDirectory=")).count(),
+        1
+    );
+
+    let ver_pos = args.iter().position(|a| a == "--version").unwrap();
+    assert_eq!(args[ver_pos + 1], "1.20.1-forge-47.4.13");
+
+    let log_arg = args
+        .iter()
+        .find(|a| a.starts_with("-Dlog4j.configurationFile="))
+        .unwrap();
+    #[cfg(windows)]
+    assert!(!log_arg.contains('/'), "Log4j path on Windows must use native separators: {log_arg}");
+    assert!(log_arg.ends_with("client-1.12.xml"));
 }
