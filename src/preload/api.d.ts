@@ -27,6 +27,12 @@ export interface AbiApi {
   getSystemTheme(): Promise<Result<SystemTheme>>
   onSystemThemeChanged(cb: (theme: SystemTheme) => void): () => void
 
+  windowMinimize(): Promise<Result<void>>
+  windowToggleMaximize(): Promise<Result<boolean>>
+  windowClose(): Promise<Result<void>>
+  windowIsMaximized(): Promise<Result<boolean>>
+  onWindowMaximizedChanged(cb: (maximized: boolean) => void): () => void
+
   getProfiles(): Promise<Result<ProfilesState>>
   createProfile(name: string): Promise<Result<ProfilesState>>
   renameProfile(id: string, name: string): Promise<Result<ProfilesState>>

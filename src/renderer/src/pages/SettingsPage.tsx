@@ -8,6 +8,22 @@ import type {
   ThemeSetting
 } from '@shared/types'
 import type { SystemTheme } from '../../../preload/api'
+import {
+  IconCheck,
+  IconCpu,
+  IconDownloads,
+  IconError,
+  IconFolder,
+  IconMonitor,
+  IconMoon,
+  IconPlus,
+  IconRefresh,
+  IconSettings,
+  IconShield,
+  IconSun,
+  IconTerminal,
+  IconTrash
+} from '../components/Icons'
 
 interface SettingsPageProps {
   appInfo: AppInfo | null
@@ -61,11 +77,28 @@ export function SettingsPage(props: SettingsPageProps) {
 
   return (
     <div className="stack">
-      {statusMsg && <div className="banner banner-info">{statusMsg}</div>}
-      {errorMsg && <div className="banner banner-error">{errorMsg}</div>}
+      {statusMsg && (
+        <div className="banner banner-info">
+          <div className="row" style={{ gap: 8 }}>
+            <IconCheck size={16} />
+            <span>{statusMsg}</span>
+          </div>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="banner banner-error">
+          <div className="row" style={{ gap: 8 }}>
+            <IconError size={16} />
+            <span>{errorMsg}</span>
+          </div>
+        </div>
+      )}
 
       <div className="card stack">
-        <h3 style={{ margin: 0 }}>Внешний вид</h3>
+        <h3 className="section-header">
+          {props.systemTheme === 'dark' ? <IconMoon size={18} /> : <IconSun size={18} />}
+          <span>Внешний вид</span>
+        </h3>
         <div className="row-between">
           <div>
             <div style={{ fontWeight: 600 }}>Тема оформления</div>
@@ -87,7 +120,14 @@ export function SettingsPage(props: SettingsPageProps) {
                 className={`btn btn-sm ${settings.theme === val ? 'btn-primary' : ''}`}
                 onClick={() => void runAction(() => props.onUpdateSettings({ theme: val }))}
               >
-                {label}
+                {val === 'system' ? (
+                  <IconMonitor size={13} />
+                ) : val === 'light' ? (
+                  <IconSun size={13} />
+                ) : (
+                  <IconMoon size={13} />
+                )}
+                <span>{label}</span>
               </button>
             ))}
             {settings.theme !== 'system' && (
@@ -96,7 +136,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 className="btn btn-sm"
                 onClick={() => void runAction(() => props.onUpdateSettings({ theme: 'system' }))}
               >
-                Сбросить к системной
+                <IconRefresh size={13} />
+                <span>Сбросить к системной</span>
               </button>
             )}
           </div>
@@ -104,14 +145,18 @@ export function SettingsPage(props: SettingsPageProps) {
       </div>
 
       <div className="card stack">
-        <h3 style={{ margin: 0 }}>Папка установки и параметры игры</h3>
+        <h3 className="section-header">
+          <IconSettings size={18} />
+          <span>Папка установки и параметры игры</span>
+        </h3>
 
         <div className="stack-sm">
           <div style={{ fontWeight: 600 }}>Папка для сборок, Minecraft и Java</div>
           <div className="row">
             <input className="input mono" readOnly value={settings.installDir} style={{ flex: 1 }} />
             <button type="button" className="btn" onClick={() => void runAction(() => props.onPickDirectory())}>
-              Выбрать папку…
+              <IconFolder size={14} />
+              <span>Выбрать папку…</span>
             </button>
             {appInfo && settings.installDir !== appInfo.defaultInstallDir && (
               <button
@@ -124,7 +169,8 @@ export function SettingsPage(props: SettingsPageProps) {
                   )
                 }
               >
-                По умолчанию
+                <IconRefresh size={14} />
+                <span>По умолчанию</span>
               </button>
             )}
           </div>
@@ -165,7 +211,8 @@ export function SettingsPage(props: SettingsPageProps) {
                   )
                 }
               >
-                Сохранить ОЗУ
+                <IconCheck size={13} />
+                <span>Сохранить ОЗУ</span>
               </button>
             </div>
             <div className="subtle">Доступно в системе: {maxMem} МБ.</div>
@@ -206,7 +253,8 @@ export function SettingsPage(props: SettingsPageProps) {
                   )
                 }
               >
-                Применить
+                <IconCheck size={13} />
+                <span>Применить</span>
               </button>
             </div>
             <div className="row">
@@ -300,13 +348,17 @@ export function SettingsPage(props: SettingsPageProps) {
 
       <div className="card stack">
         <div className="row-between">
-          <h3 style={{ margin: 0 }}>Java Runtime</h3>
+          <h3 className="section-header">
+            <IconCpu size={18} />
+            <span>Java Runtime</span>
+          </h3>
           <button
             type="button"
             className="btn btn-sm"
             onClick={() => void runAction(() => props.onRefreshJava())}
           >
-            Найти установленную Java
+            <IconRefresh size={13} />
+            <span>Найти установленную Java</span>
           </button>
         </div>
 
@@ -326,7 +378,8 @@ export function SettingsPage(props: SettingsPageProps) {
               if (picked) setJavaInput(picked)
             }}
           >
-            Обзор…
+            <IconFolder size={14} />
+            <span>Обзор…</span>
           </button>
           <button
             type="button"
@@ -345,7 +398,8 @@ export function SettingsPage(props: SettingsPageProps) {
               })
             }
           >
-            Проверить и сохранить
+            <IconCheck size={14} />
+            <span>Проверить и сохранить</span>
           </button>
           {settings.javaPath && (
             <button
@@ -359,7 +413,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 })
               }
             >
-              Авто
+              <IconRefresh size={14} />
+              <span>Авто</span>
             </button>
           )}
         </div>
@@ -391,7 +446,8 @@ export function SettingsPage(props: SettingsPageProps) {
                     )
                   }}
                 >
-                  Выбрать
+                  <IconCheck size={13} />
+                  <span>Выбрать</span>
                 </button>
               </div>
             ))}
@@ -400,7 +456,10 @@ export function SettingsPage(props: SettingsPageProps) {
       </div>
 
       <div className="card stack">
-        <h3 style={{ margin: 0 }}>Источники сборок GitHub</h3>
+        <h3 className="section-header">
+          <IconShield size={18} />
+          <span>Источники сборок GitHub</span>
+        </h3>
         <div className="stack-sm">
           <div style={{ fontWeight: 600 }}>Адрес официального каталога (catalog.json)</div>
           <div className="row">
@@ -420,7 +479,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 )
               }
             >
-              Сохранить
+              <IconCheck size={14} />
+              <span>Сохранить</span>
             </button>
           </div>
         </div>
@@ -454,7 +514,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 }, 'Репозиторий добавлен.')
               }
             >
-              Добавить
+              <IconPlus size={14} />
+              <span>Добавить</span>
             </button>
           </div>
           {settings.customRepos.map((r) => (
@@ -467,7 +528,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 className="btn btn-sm btn-danger"
                 onClick={() => void runAction(() => props.onRemoveRepo(r.repo))}
               >
-                Удалить
+                <IconTrash size={13} />
+                <span>Удалить</span>
               </button>
             </div>
           ))}
@@ -477,7 +539,10 @@ export function SettingsPage(props: SettingsPageProps) {
       <div className="card stack">
         <div className="row-between">
           <div>
-            <h3 style={{ margin: 0 }}>Диагностика и логи</h3>
+            <h3 className="section-header" style={{ marginBottom: 4 }}>
+              <IconTerminal size={18} />
+              <span>Диагностика и логи</span>
+            </h3>
             <div className="subtle">
               Экспорт удаляет домашний путь, имя пользователя ОС и возможные токены.
             </div>
@@ -492,7 +557,8 @@ export function SettingsPage(props: SettingsPageProps) {
               })
             }
           >
-            Экспортировать отчёт
+            <IconDownloads size={14} />
+            <span>Экспортировать отчёт</span>
           </button>
         </div>
 
@@ -534,9 +600,12 @@ export function SettingsPage(props: SettingsPageProps) {
         </div>
 
         <div className="banner banner-info subtle">
-          <div>
-            <strong>О проверке целостности:</strong> контрольные суммы SHA-256 подтверждают, что файлы
-            скачались без повреждений и соответствуют манифесту, но не заменяют доверие к самому GitHub-репозиторию.
+          <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <IconShield size={16} />
+            <div>
+              <strong>О проверке целостности:</strong> контрольные суммы SHA-256 подтверждают, что файлы
+              скачались без повреждений и соответствуют манифесту, но не заменяют доверие к самому GitHub-репозиторию.
+            </div>
           </div>
           <div>
             <strong>Версия лаунчера:</strong> {appInfo?.version ?? '0.1.0'} · Обновление самого лаунчера

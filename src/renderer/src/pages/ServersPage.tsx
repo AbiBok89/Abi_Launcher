@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { PackView, ServerStatus } from '@shared/types'
+import { IconCheck, IconCopy, IconPlay, IconRefresh, IconServers } from '../components/Icons'
 import { formatLoader, formatServerAddress } from '../utils/format'
 
 interface ServersPageProps {
@@ -29,13 +30,17 @@ export function ServersPage(props: ServersPageProps) {
     <div className="stack">
       <div className="row-between">
         <div>
-          <h3 style={{ margin: 0 }}>Игровые серверы</h3>
+          <h3 className="section-header" style={{ marginBottom: 4 }}>
+            <IconServers size={18} />
+            <span>Игровые серверы</span>
+          </h3>
           <div className="subtle">
             Подключение при запуске поддерживается автоматически там, где это умеет версия Minecraft.
           </div>
         </div>
         <button type="button" className="btn" onClick={props.onPingAll}>
-          Обновить все статусы
+          <IconRefresh size={14} />
+          <span>Обновить все статусы</span>
         </button>
       </div>
 
@@ -69,15 +74,24 @@ export function ServersPage(props: ServersPageProps) {
                   </div>
                   <div className="row">
                     {busyPing ? (
-                      <span className="badge badge-info">Проверка…</span>
+                      <span className="badge badge-info">
+                        <IconRefresh size={12} className="spin-slow" />
+                        <span>Проверка…</span>
+                      </span>
                     ) : st ? (
                       <span className={`badge ${st.online ? 'badge-ok' : 'badge-danger'}`}>
-                        {st.online
-                          ? `Онлайн · Игроки: ${st.playersOnline ?? '?'}/${st.playersMax ?? '?'}${st.latencyMs !== null ? ` · ${st.latencyMs} мс` : ''}`
-                          : 'Офлайн'}
+                        <span className={`status-dot ${st.online ? 'dot-live' : 'dot-down'}`} />
+                        <span>
+                          {st.online
+                            ? `Онлайн · Игроки: ${st.playersOnline ?? '?'}/${st.playersMax ?? '?'}${st.latencyMs !== null ? ` · ${st.latencyMs} мс` : ''}`
+                            : 'Офлайн'}
+                        </span>
                       </span>
                     ) : (
-                      <span className="badge badge-neutral">Статус неизвестен</span>
+                      <span className="badge badge-neutral">
+                        <span className="status-dot dot-idle" />
+                        <span>Статус неизвестен</span>
+                      </span>
                     )}
                   </div>
                 </div>
@@ -92,7 +106,8 @@ export function ServersPage(props: ServersPageProps) {
                   <div className="row">
                     <span className="mono">{addr}</span>
                     <button type="button" className="btn btn-sm" onClick={() => copyAddr(addr)}>
-                      {copied === addr ? 'Скопировано' : 'Скопировать адрес'}
+                      {copied === addr ? <IconCheck size={13} /> : <IconCopy size={13} />}
+                      <span>{copied === addr ? 'Скопировано' : 'Скопировать адрес'}</span>
                     </button>
                   </div>
                   <div className="row">
@@ -102,7 +117,8 @@ export function ServersPage(props: ServersPageProps) {
                       disabled={busyPing}
                       onClick={() => props.onPingOne(srv.host, srv.port)}
                     >
-                      Пинг
+                      <IconRefresh size={13} className={busyPing ? 'spin-slow' : ''} />
+                      <span>Пинг</span>
                     </button>
                     <button
                       type="button"
@@ -110,7 +126,8 @@ export function ServersPage(props: ServersPageProps) {
                       disabled={packBusy}
                       onClick={() => props.onJoinPlay(pack.key)}
                     >
-                      Играть на сервере
+                      <IconPlay size={13} />
+                      <span>Играть на сервере</span>
                     </button>
                   </div>
                 </div>

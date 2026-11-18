@@ -1,4 +1,13 @@
 import type { PackView, ProgressEvent } from '@shared/types'
+import {
+  IconAlert,
+  IconCancel,
+  IconDownloads,
+  IconPlay,
+  IconRefresh,
+  IconShield,
+  StatusIcon
+} from '../components/Icons'
 import { STAGE_LABELS, STATUS_LABELS, formatBytes, formatLoader, formatSpeed } from '../utils/format'
 
 interface DownloadsPageProps {
@@ -19,7 +28,10 @@ export function DownloadsPage(props: DownloadsPageProps) {
     <div className="stack">
       <div className="card stack">
         <div className="row-between">
-          <h3 style={{ margin: 0 }}>Активные загрузки и проверки</h3>
+          <h3 className="section-header">
+            <IconDownloads size={17} />
+            <span>Активные загрузки и проверки</span>
+          </h3>
           <span className="subtle">
             Загрузки выполняются во временную папку и проверяются по SHA-256 до применения
           </span>
@@ -40,14 +52,18 @@ export function DownloadsPage(props: DownloadsPageProps) {
                   <div className="row-between">
                     <strong>{pack?.name ?? prog.packKey}</strong>
                     <div className="row">
-                      <span className="badge badge-info">{STAGE_LABELS[prog.stage]}</span>
+                      <span className="badge badge-info">
+                        <IconRefresh size={12} className="spin-slow" />
+                        <span>{STAGE_LABELS[prog.stage]}</span>
+                      </span>
                       {prog.cancellable && (
                         <button
                           type="button"
                           className="btn btn-sm btn-danger"
                           onClick={() => props.onCancelOp(prog.packKey)}
                         >
-                          Отменить
+                          <IconCancel size={13} />
+                          <span>Отменить</span>
                         </button>
                       )}
                     </div>
@@ -76,7 +92,10 @@ export function DownloadsPage(props: DownloadsPageProps) {
 
       <div className="card stack">
         <div className="row-between">
-          <h3 style={{ margin: 0 }}>Состояние сборок и обновлений</h3>
+          <h3 className="section-header">
+            <IconShield size={17} />
+            <span>Состояние сборок и обновлений</span>
+          </h3>
           <button
             type="button"
             className="btn btn-sm"
@@ -88,7 +107,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
               }
             }}
           >
-            Проверить все сборки
+            <IconRefresh size={14} />
+            <span>Проверить все сборки</span>
           </button>
         </div>
 
@@ -105,10 +125,13 @@ export function DownloadsPage(props: DownloadsPageProps) {
                 pack.status === 'running'
               return (
                 <div key={pack.key} className="card-flat row-between">
-                  <div className="stack-sm" style={{ gap: 2 }}>
+                  <div className="stack-sm" style={{ gap: 4 }}>
                     <div className="row">
                       <strong>{pack.name}</strong>
-                      <span className={`badge badge-${badge.tone}`}>{badge.label}</span>
+                      <span className={`badge badge-${badge.tone}`}>
+                        <StatusIcon status={pack.status} size={12} />
+                        <span>{badge.label}</span>
+                      </span>
                     </div>
                     <div className="subtle">
                       MC {pack.minecraft} · {formatLoader(pack.loader)} · Установлена:{' '}
@@ -122,7 +145,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
                       disabled={busy}
                       onClick={() => void props.onCheckPack(pack.key)}
                     >
-                      Проверить
+                      <IconRefresh size={13} />
+                      <span>Проверить</span>
                     </button>
                     {!pack.installedVersion ? (
                       <button
@@ -131,7 +155,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
                         disabled={busy}
                         onClick={() => void props.onInstallPack(pack.key)}
                       >
-                        Установить
+                        <IconDownloads size={13} />
+                        <span>Установить</span>
                       </button>
                     ) : pack.status === 'update-available' ? (
                       <button
@@ -140,7 +165,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
                         disabled={busy}
                         onClick={() => void props.onInstallPack(pack.key)}
                       >
-                        Обновить
+                        <IconDownloads size={13} />
+                        <span>Обновить</span>
                       </button>
                     ) : pack.status === 'conflict' || pack.status === 'error' ? (
                       <button
@@ -148,7 +174,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
                         className="btn btn-sm btn-warn"
                         onClick={() => props.onOpenPackPage(pack.key)}
                       >
-                        Открыть
+                        <IconAlert size={13} />
+                        <span>Открыть</span>
                       </button>
                     ) : (
                       <button
@@ -157,7 +184,8 @@ export function DownloadsPage(props: DownloadsPageProps) {
                         disabled={busy}
                         onClick={() => void props.onPlayPack(pack.key)}
                       >
-                        Играть
+                        <IconPlay size={13} />
+                        <span>Играть</span>
                       </button>
                     )}
                   </div>

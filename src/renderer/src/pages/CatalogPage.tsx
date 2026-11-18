@@ -3,6 +3,7 @@ import type {
   CatalogResult,
   ConflictChoice,
   JavaInfoView,
+  PackStatus,
   PackView,
   ProfilesState,
   ProgressEvent,
@@ -12,6 +13,22 @@ import type {
 } from '@shared/types'
 import { ConflictModal } from '../components/ConflictModal'
 import { ErrorBanner } from '../components/ErrorBanner'
+import {
+  IconAlert,
+  IconCancel,
+  IconCheck,
+  IconCopy,
+  IconCpu,
+  IconDownloads,
+  IconFolder,
+  IconPlay,
+  IconPlus,
+  IconRefresh,
+  IconServers,
+  IconShield,
+  IconWifiOff,
+  StatusIcon
+} from '../components/Icons'
 import {
   STAGE_LABELS,
   STATUS_LABELS,
@@ -165,6 +182,25 @@ export function CatalogPage(props: CatalogPageProps) {
     }
   }
 
+  const primaryActionIcon = (status: PackStatus) => {
+    switch (status) {
+      case 'not-installed':
+      case 'update-available':
+        return <IconDownloads size={17} />
+      case 'checking':
+      case 'downloading':
+      case 'launching':
+        return <IconRefresh size={17} className="spin-slow" />
+      case 'conflict':
+        return <IconAlert size={17} />
+      case 'error':
+        return <IconRefresh size={17} />
+      case 'ready':
+      case 'running':
+        return <IconPlay size={17} />
+    }
+  }
+
   const handleCopyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr).catch(() => undefined)
     setCopiedAddr(addr)
@@ -203,14 +239,16 @@ export function CatalogPage(props: CatalogPageProps) {
             disabled={props.loadingCatalog}
             onClick={props.onReloadCatalog}
           >
-            {props.loadingCatalog ? 'Обновление каталога…' : 'Обновить каталог'}
+            <IconRefresh size={15} className={props.loadingCatalog ? 'spin-slow' : ''} />
+            <span>{props.loadingCatalog ? 'Обновление каталога…' : 'Обновить каталог'}</span>
           </button>
           <button
             type="button"
             className="btn"
             onClick={() => setShowAddRepo((v) => !v)}
           >
-            + Добавить сборку по ссылке
+            <IconPlus size={15} />
+            <span>Добавить сборку по ссылке</span>
           </button>
         </div>
         {props.catalog?.loadedAt && (
@@ -240,10 +278,12 @@ export function CatalogPage(props: CatalogPageProps) {
           {repoError && <div className="subtle" style={{ color: 'var(--danger)' }}>{repoError}</div>}
           <div className="row">
             <button type="submit" className="btn btn-primary btn-sm" disabled={repoBusy}>
-              {repoBusy ? 'Добавление…' : 'Добавить'}
+              <IconCheck size={13} />
+              <span>{repoBusy ? 'Добавление…' : 'Добавить'}</span>
             </button>
             <button type="button" className="btn btn-sm" onClick={() => setShowAddRepo(false)}>
-              Отмена
+              <IconCancel size={13} />
+              <span>Отмена</span>
             </button>
           </div>
         </form>
@@ -252,9 +292,13 @@ export function CatalogPage(props: CatalogPageProps) {
       {props.catalog?.fromCache && (
         <div className="banner banner-warn">
           <div className="row-between">
-            <strong>GitHub недоступен — показаны сохранённые сборки</strong>
+            <div className="row" style={{ gap: 8 }}>
+              <IconWifiOff size={16} />
+              <strong>GitHub недоступен — показаны сохранённые сборки</strong>
+            </div>
             <button type="button" className="btn btn-sm" onClick={props.onReloadCatalog}>
-              Повторить проверку
+              <IconRefresh size={13} />
+              <span>Повторить проверку</span>
             </button>
           </div>
           <div>
@@ -267,9 +311,13 @@ export function CatalogPage(props: CatalogPageProps) {
       {!props.catalog?.fromCache && props.catalog?.catalogError && (
         <div className="banner banner-warn">
           <div className="row-between">
-            <strong>Не удалось загрузить общий каталог GitHub</strong>
+            <div className="row" style={{ gap: 8 }}>
+              <IconAlert size={16} />
+              <strong>Не удалось загрузить общий каталог GitHub</strong>
+            </div>
             <button type="button" className="btn btn-sm" onClick={props.onReloadCatalog}>
-              Повторить
+              <IconRefresh size={13} />
+              <span>Повторить</span>
             </button>
           </div>
           <div>{props.catalog.catalogError}</div>
@@ -281,7 +329,10 @@ export function CatalogPage(props: CatalogPageProps) {
 
       {props.catalog && props.catalog.errors.length > 0 && (
         <div className="banner banner-warn">
-          <strong>Часть репозиториев не ответила:</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <IconAlert size={16} />
+            <strong>Часть репозиториев не ответила:</strong>
+          </div>
           {props.catalog.errors.map((err) => (
             <div key={err.repo} className="subtle">
               <span className="mono">{err.repo}</span>: {err.message}
@@ -300,10 +351,12 @@ export function CatalogPage(props: CatalogPageProps) {
           </p>
           <div className="row">
             <button type="button" className="btn btn-primary" onClick={props.onReloadCatalog}>
-              Повторить проверку
+              <IconRefresh size={15} />
+              <span>Повторить проверку</span>
             </button>
             <button type="button" className="btn" onClick={() => setShowAddRepo(true)}>
-              Добавить репозиторий
+              <IconPlus size={15} />
+              <span>Добавить репозиторий</span>
             </button>
           </div>
         </div>
@@ -331,14 +384,24 @@ export function CatalogPage(props: CatalogPageProps) {
                     )}
                   </div>
                   <div className="stack-sm" style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                    <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
                       {pack.name}
                     </div>
                     <div className="subtle">
                       MC {pack.minecraft} · {formatLoader(pack.loader)}
                     </div>
                     <div className="row-between">
-                      <span className={`badge badge-${badge.tone}`}>{badge.label}</span>
+                      <span className={`badge badge-${badge.tone}`}>
+                        <StatusIcon status={pack.status} size={12} />
+                        <span>{badge.label}</span>
+                      </span>
                       <span className="subtle mono">{pack.version}</span>
                     </div>
                   </div>
@@ -356,25 +419,25 @@ export function CatalogPage(props: CatalogPageProps) {
                 <div className="pack-hero-overlay" />
                 <div className="pack-hero-content stack-sm">
                   <div className="row-between">
-                    <span className="badge badge-neutral">
-                      {selected.source.official ? 'Официальная сборка' : 'Добавленный репозиторий'} · {selected.source.repo}
+                    <span className="hero-chip">
+                      {selected.source.official ? <IconShield size={12} /> : <IconPlus size={12} />}
+                      <span>
+                        {selected.source.official ? 'Официальная сборка' : 'Добавленный репозиторий'} ·{' '}
+                        {selected.source.repo}
+                      </span>
                     </span>
                     <span className={`badge badge-${STATUS_LABELS[selected.status].tone}`}>
-                      {STATUS_LABELS[selected.status].label}
+                      <StatusIcon status={selected.status} size={13} />
+                      <span>{STATUS_LABELS[selected.status].label}</span>
                     </span>
                   </div>
-                  <h2 style={{ margin: 0, fontSize: 24 }}>{selected.name}</h2>
-                  <div className="row" style={{ opacity: 0.9 }}>
-                    <span>Minecraft {selected.minecraft}</span>
-                    <span>•</span>
-                    <span>{formatLoader(selected.loader)}</span>
-                    <span>•</span>
-                    <span>Версия сборки: {selected.version}</span>
+                  <h2 style={{ margin: 0, fontSize: 25, letterSpacing: '-0.02em' }}>{selected.name}</h2>
+                  <div className="row">
+                    <span className="hero-chip">Minecraft {selected.minecraft}</span>
+                    <span className="hero-chip">{formatLoader(selected.loader)}</span>
+                    <span className="hero-chip">Версия сборки: {selected.version}</span>
                     {selected.installedVersion && (
-                      <>
-                        <span>•</span>
-                        <span>Установлено: {selected.installedVersion}</span>
-                      </>
+                      <span className="hero-chip">Установлено: {selected.installedVersion}</span>
                     )}
                   </div>
                 </div>
@@ -388,7 +451,8 @@ export function CatalogPage(props: CatalogPageProps) {
                     disabled={isBusy}
                     onClick={() => void handlePrimaryAction(selected)}
                   >
-                    {primaryButtonLabel(selected)}
+                    {primaryActionIcon(selected.status)}
+                    <span>{primaryButtonLabel(selected)}</span>
                   </button>
 
                   {activeProgress?.cancellable && (
@@ -397,7 +461,8 @@ export function CatalogPage(props: CatalogPageProps) {
                       className="btn btn-danger"
                       onClick={() => props.onCancelOp(selected.key)}
                     >
-                      Отменить
+                      <IconCancel size={15} />
+                      <span>Отменить</span>
                     </button>
                   )}
 
@@ -407,7 +472,8 @@ export function CatalogPage(props: CatalogPageProps) {
                     disabled={isBusy}
                     onClick={() => void props.onCheckPack(selected.key)}
                   >
-                    Проверить файлы
+                    <IconShield size={15} />
+                    <span>Проверить файлы</span>
                   </button>
                 </div>
 
@@ -416,14 +482,18 @@ export function CatalogPage(props: CatalogPageProps) {
                   className="btn"
                   onClick={() => props.onOpenFolder(selected.key)}
                 >
-                  Папка сборки
+                  <IconFolder size={15} />
+                  <span>Папка сборки</span>
                 </button>
               </div>
 
               {activeProgress && (
                 <div className="card-flat stack-sm">
                   <div className="row-between">
-                    <strong>{STAGE_LABELS[activeProgress.stage]}</strong>
+                    <div className="row" style={{ gap: 8 }}>
+                      <IconDownloads size={15} />
+                      <strong>{STAGE_LABELS[activeProgress.stage]}</strong>
+                    </div>
                     <span className="subtle">
                       {activeProgress.bytesTotal > 0
                         ? `${formatBytes(activeProgress.bytesDone)} / ${formatBytes(activeProgress.bytesTotal)} · ${formatSpeed(activeProgress.speed)}`
@@ -470,7 +540,10 @@ export function CatalogPage(props: CatalogPageProps) {
               {selected.conflicts.length > 0 && (
                 <div className="banner banner-warn">
                   <div className="row-between">
-                    <strong>Обнаружены изменения в файлах сборки ({selected.conflicts.length})</strong>
+                    <div className="row" style={{ gap: 8 }}>
+                      <IconAlert size={16} />
+                      <strong>Обнаружены изменения в файлах сборки ({selected.conflicts.length})</strong>
+                    </div>
                     <button
                       type="button"
                       className="btn btn-sm btn-primary"
@@ -487,7 +560,10 @@ export function CatalogPage(props: CatalogPageProps) {
 
               {selected.warnings.length > 0 && (
                 <div className="banner banner-warn">
-                  <strong>Предупреждения</strong>
+                  <div className="row" style={{ gap: 8 }}>
+                    <IconAlert size={16} />
+                    <strong>Предупреждения</strong>
+                  </div>
                   {selected.warnings.map((w, i) => (
                     <div key={i}>{w}</div>
                   ))}
@@ -496,14 +572,17 @@ export function CatalogPage(props: CatalogPageProps) {
 
               {selected.description && (
                 <div className="stack-sm">
-                  <h4 style={{ margin: 0 }}>Описание</h4>
+                  <h4 className="section-header">Описание</h4>
                   <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{selected.description}</p>
                 </div>
               )}
 
               <div className="grid-2">
                 <div className="card-flat stack-sm">
-                  <h4 style={{ margin: 0 }}>Параметры запуска этой сборки</h4>
+                  <h4 className="section-header">
+                    <IconCpu size={16} />
+                    <span>Параметры запуска этой сборки</span>
+                  </h4>
                   <label className="stack-sm" style={{ gap: 4 }}>
                     <span className="subtle">
                       Память ОЗУ (рекомендовано {selected.recommendedMemoryMb} МБ)
@@ -546,7 +625,10 @@ export function CatalogPage(props: CatalogPageProps) {
                 </div>
 
                 <div className="card-flat stack-sm">
-                  <h4 style={{ margin: 0 }}>Связанный сервер</h4>
+                  <h4 className="section-header">
+                    <IconServers size={16} />
+                    <span>Связанный сервер</span>
+                  </h4>
                   {selected.server ? (
                     (() => {
                       const addr = formatServerAddress(selected.server.host, selected.server.port)
@@ -557,12 +639,18 @@ export function CatalogPage(props: CatalogPageProps) {
                             <span style={{ fontWeight: 600 }}>{selected.server.name}</span>
                             {st ? (
                               <span className={`badge ${st.online ? 'badge-ok' : 'badge-danger'}`}>
-                                {st.online
-                                  ? `Онлайн · ${st.playersOnline ?? '?'}/${st.playersMax ?? '?'}`
-                                  : 'Офлайн'}
+                                <span className={`status-dot ${st.online ? 'dot-live' : 'dot-down'}`} />
+                                <span>
+                                  {st.online
+                                    ? `Онлайн · ${st.playersOnline ?? '?'}/${st.playersMax ?? '?'}`
+                                    : 'Офлайн'}
+                                </span>
                               </span>
                             ) : (
-                              <span className="badge badge-neutral">Не проверен</span>
+                              <span className="badge badge-neutral">
+                                <span className="status-dot dot-idle" />
+                                <span>Не проверен</span>
+                              </span>
                             )}
                           </div>
                           <div className="row-between">
@@ -573,7 +661,8 @@ export function CatalogPage(props: CatalogPageProps) {
                                 className="btn btn-sm"
                                 onClick={() => handleCopyAddress(addr)}
                               >
-                                {copiedAddr === addr ? 'Скопировано' : 'Копировать'}
+                                {copiedAddr === addr ? <IconCheck size={13} /> : <IconCopy size={13} />}
+                                <span>{copiedAddr === addr ? 'Скопировано' : 'Копировать'}</span>
                               </button>
                               <button
                                 type="button"
@@ -582,7 +671,8 @@ export function CatalogPage(props: CatalogPageProps) {
                                   props.onPingServer(selected.server!.host, selected.server!.port)
                                 }
                               >
-                                Пинг
+                                <IconRefresh size={13} />
+                                <span>Пинг</span>
                               </button>
                             </div>
                           </div>

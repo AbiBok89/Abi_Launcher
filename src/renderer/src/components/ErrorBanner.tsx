@@ -1,4 +1,5 @@
 import type { UserError } from '@shared/types'
+import { IconError, IconRefresh } from './Icons'
 
 interface ErrorBannerProps {
   error: UserError
@@ -10,10 +11,14 @@ export function ErrorBanner({ error, onRetry, retryLabel = 'Повторить' 
   return (
     <div className="banner banner-error" role="alert">
       <div className="row-between">
-        <strong>{error.title}</strong>
+        <div className="row" style={{ gap: 8 }}>
+          <IconError size={16} />
+          <strong>{error.title}</strong>
+        </div>
         {onRetry && (
           <button type="button" className="btn btn-sm" onClick={onRetry}>
-            {retryLabel}
+            <IconRefresh size={13} />
+            <span>{retryLabel}</span>
           </button>
         )}
       </div>

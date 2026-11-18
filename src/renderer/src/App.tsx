@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import type {
   AppInfo,
   CatalogResult,
@@ -13,6 +13,25 @@ import type {
   Settings
 } from '@shared/types'
 import type { SystemTheme } from '../../preload/api'
+import {
+  AbiLogo,
+  IconCatalog,
+  IconChevronRight,
+  IconClose,
+  IconDownloads,
+  IconMaximize,
+  IconMinimize,
+  IconMonitor,
+  IconMoon,
+  IconNews,
+  IconProfiles,
+  IconRefresh,
+  IconRestore,
+  IconServers,
+  IconSettings,
+  IconSun,
+  PlayerAvatar
+} from './components/Icons'
 import { CatalogPage } from './pages/CatalogPage'
 import { DownloadsPage } from './pages/DownloadsPage'
 import { NewsPage } from './pages/NewsPage'
@@ -31,6 +50,15 @@ const TAB_TITLES: Record<TabId, string> = {
   settings: 'Настройки и диагностика'
 }
 
+const TAB_ICONS: Record<TabId, ComponentType<{ size?: number; className?: string }>> = {
+  catalog: IconCatalog,
+  downloads: IconDownloads,
+  servers: IconServers,
+  news: IconNews,
+  profiles: IconProfiles,
+  settings: IconSettings
+}
+
 function unwrap<T>(res: Result<T>): T {
   if (!res.ok) throw new Error(`${res.error.title}: ${res.error.message}`)
   return res.value
@@ -45,6 +73,7 @@ export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [systemTheme, setSystemTheme] = useState<SystemTheme>('dark')
+  const [isMaximized, setIsMaximized] = useState(false)
   const [profiles, setProfiles] = useState<ProfilesState>({ profiles: [], selectedId: null })
   const [catalog, setCatalog] = useState<CatalogResult | null>(null)
   const [loadingCatalog, setLoadingCatalog] = useState(false)
@@ -114,23 +143,26 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
-      const [infoRes, settingsRes, themeRes, profilesRes, logsRes] = await Promise.all([
+      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, maxRes] = await Promise.all([
         window.abi.getAppInfo(),
         window.abi.getSettings(),
         window.abi.getSystemTheme(),
         window.abi.getProfiles(),
-        window.abi.getLogs()
+        window.abi.getLogs(),
+        window.abi.windowIsMaximized()
       ])
       if (infoRes.ok) setAppInfo(infoRes.value)
       if (settingsRes.ok) setSettings(settingsRes.value)
       if (themeRes.ok) setSystemTheme(themeRes.value)
       if (profilesRes.ok) setProfiles(profilesRes.value)
       if (logsRes.ok) setLogs(logsRes.value)
+      if (maxRes.ok) setIsMaximized(maxRes.value)
       void refreshJava()
       void reloadCatalog()
     })()
 
     const unsubTheme = window.abi.onSystemThemeChanged((t) => setSystemTheme(t))
+    const unsubMax = window.abi.onWindowMaximizedChanged((v) => setIsMaximized(v))
     const unsubProgress = window.abi.onProgress((ev) => {
       setProgressByPack((prev) => ({ ...prev, [ev.packKey]: ev }))
     })
@@ -175,6 +207,7 @@ export function App() {
 
     return () => {
       unsubTheme()
+      unsubMax()
       unsubProgress()
       unsubState()
       unsubLog()
@@ -228,99 +261,187 @@ export function App() {
   const activeOpsCount = Object.keys(progressByPack).length
   const updatesCount =
     catalog?.packs.filter((p) => p.status === 'update-available').length ?? 0
+  const CurrentTabIcon = TAB_ICONS[tab]
+  const ThemeIcon =
+    !settings || settings.theme === 'system'
+      ? IconMonitor
+      : settings.theme === 'dark'
+        ? IconMoon
+        : IconSun
+
+  const cycleTheme = () => {
+    if (!settings) return
+    const next =
+      settings.theme === 'system'
+        ? systemTheme === 'dark'
+          ? 'light'
+          : 'dark'
+        : settings.theme === 'dark'
+          ? 'light'
+          : 'system'
+    void updateSettings({ theme: next })
+  }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">A</div>
-          <div>
-            <div className="brand-title">AbiLauncher</div>
-            <div className="brand-sub">v{appInfo?.version ?? '0.1.0'}</div>
-          </div>
+    <div className="window-shell">
+      <header className="titlebar">
+        <div className="titlebar-brand">
+          <AbiLogo size={20} />
+          <span className="titlebar-name">AbiLauncher</span>
+          <span className="titlebar-ver">v{appInfo?.version ?? '0.1.0'}</span>
         </div>
 
-        <nav className="nav-list">
-          {(
-            [
-              ['catalog', 'Каталог и сборки', null],
-              ['downloads', 'Загрузки', activeOpsCount || updatesCount || null],
-              ['servers', 'Серверы', null],
-              ['news', 'Новости', null],
-              ['profiles', 'Профили', null],
-              ['settings', 'Настройки', null]
-            ] as Array<[TabId, string, number | null]>
-          ).map(([id, label, badge]) => (
-            <button
-              key={id}
-              type="button"
-              className={`nav-item ${tab === id ? 'active' : ''}`}
-              onClick={() => setTab(id)}
-            >
-              <span>{label}</span>
-              {badge !== null && <span className="nav-badge">{badge}</span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button
-            type="button"
-            className="profile-pill"
-            onClick={() => setTab('profiles')}
-          >
-            <div>
-              <div className="subtle">Активный профиль</div>
-              <div style={{ fontWeight: 700 }}>
-                {activeProfile ? activeProfile.name : 'Не выбран'}
-              </div>
-            </div>
-            <span className="subtle">→</span>
-          </button>
-        </div>
-      </aside>
-
-      <div className="main-area">
-        <header className="topbar">
-          <div className="topbar-title">{TAB_TITLES[tab]}</div>
-          <div className="topbar-actions">
+        <div className="titlebar-right">
+          <div className="titlebar-quick">
             {activeOpsCount > 0 && (
               <button
                 type="button"
                 className="btn btn-sm"
                 onClick={() => setTab('downloads')}
+                title="Открыть текущие загрузки"
               >
-                Активных операций: {activeOpsCount}
+                <IconRefresh size={13} className="spin-slow" />
+                <span>Операций: {activeOpsCount}</span>
               </button>
             )}
             {settings && (
               <button
                 type="button"
-                className="btn btn-sm"
-                onClick={() => {
-                  const next =
-                    settings.theme === 'system'
-                      ? systemTheme === 'dark'
-                        ? 'light'
-                        : 'dark'
-                      : settings.theme === 'dark'
-                        ? 'light'
-                        : 'system'
-                  void updateSettings({ theme: next })
-                }}
+                className="btn btn-sm btn-ghost"
+                onClick={cycleTheme}
+                title="Переключить тему оформления"
               >
-                Тема:{' '}
-                {settings.theme === 'system'
-                  ? `Системная (${systemTheme === 'dark' ? 'тёмная' : 'светлая'})`
-                  : settings.theme === 'dark'
-                    ? 'Тёмная'
-                    : 'Светлая'}
+                <ThemeIcon size={14} />
+                <span>
+                  {settings.theme === 'system'
+                    ? `Системная (${systemTheme === 'dark' ? 'тёмная' : 'светлая'})`
+                    : settings.theme === 'dark'
+                      ? 'Тёмная'
+                      : 'Светлая'}
+                </span>
               </button>
             )}
           </div>
-        </header>
 
-        <main className="content-scroll">
+          <div className="window-controls">
+            <button
+              type="button"
+              className="win-btn"
+              aria-label="Свернуть окно"
+              title="Свернуть"
+              onClick={() => void window.abi.windowMinimize()}
+            >
+              <IconMinimize size={14} />
+            </button>
+            <button
+              type="button"
+              className="win-btn"
+              aria-label={isMaximized ? 'Восстановить окно' : 'Развернуть окно'}
+              title={isMaximized ? 'Восстановить' : 'Развернуть'}
+              onClick={() => void window.abi.windowToggleMaximize()}
+            >
+              {isMaximized ? <IconRestore size={14} /> : <IconMaximize size={14} />}
+            </button>
+            <button
+              type="button"
+              className="win-btn win-btn-close"
+              aria-label="Закрыть лаунчер"
+              title="Закрыть"
+              onClick={() => void window.abi.windowClose()}
+            >
+              <IconClose size={14} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="app-shell">
+        <aside className="sidebar">
+          <div className="sidebar-section-label">Меню</div>
+          <nav className="nav-list">
+            {(
+              [
+                ['catalog', 'Каталог и сборки', null],
+                ['downloads', 'Загрузки', activeOpsCount || updatesCount || null],
+                ['servers', 'Серверы', null],
+                ['news', 'Новости', null],
+                ['profiles', 'Профили', null],
+                ['settings', 'Настройки', null]
+              ] as Array<[TabId, string, number | null]>
+            ).map(([id, label, badge]) => {
+              const Icon = TAB_ICONS[id]
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`nav-item ${tab === id ? 'active' : ''}`}
+                  onClick={() => setTab(id)}
+                >
+                  <span className="nav-item-left">
+                    <Icon size={16} />
+                    <span>{label}</span>
+                  </span>
+                  {badge !== null && <span className="nav-badge">{badge}</span>}
+                </button>
+              )
+            })}
+          </nav>
+
+          <div className="sidebar-footer">
+            <button
+              type="button"
+              className="profile-pill"
+              onClick={() => setTab('profiles')}
+              title="Управление профилями игрока"
+            >
+              <PlayerAvatar name={activeProfile?.name ?? null} size={34} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="subtle" style={{ fontSize: 11 }}>
+                  Активный профиль
+                </div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {activeProfile ? activeProfile.name : 'Не выбран'}
+                </div>
+              </div>
+              <IconChevronRight size={15} className="subtle" />
+            </button>
+          </div>
+        </aside>
+
+        <div className="main-area">
+          <header className="topbar">
+            <div className="topbar-title-group">
+              <span className="topbar-icon">
+                <CurrentTabIcon size={17} />
+              </span>
+              <h1 className="topbar-title">{TAB_TITLES[tab]}</h1>
+            </div>
+            <div className="topbar-actions">
+              {updatesCount > 0 && tab !== 'downloads' && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-warn"
+                  onClick={() => setTab('downloads')}
+                >
+                  <IconDownloads size={14} />
+                  <span>Обновлений: {updatesCount}</span>
+                </button>
+              )}
+              {catalog && catalog.packs.length > 0 && (
+                <span className="badge badge-neutral">Сборок: {catalog.packs.length}</span>
+              )}
+            </div>
+          </header>
+
+          <main className="content-scroll">
+            <div key={tab} className="view-fade">
           {tab === 'catalog' && (
             <CatalogPage
               catalog={catalog}
@@ -425,7 +546,9 @@ export function App() {
               onExportDiagnostics={async () => unwrap(await window.abi.exportDiagnostics())}
             />
           )}
-        </main>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   )

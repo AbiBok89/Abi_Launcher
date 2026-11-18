@@ -1,5 +1,15 @@
 import { useState } from 'react'
 import type { ProfilesState } from '@shared/types'
+import {
+  IconCancel,
+  IconCheck,
+  IconEdit,
+  IconPlus,
+  IconProfiles,
+  IconShield,
+  IconTrash,
+  PlayerAvatar
+} from '../components/Icons'
 
 interface ProfilesPageProps {
   profiles: ProfilesState
@@ -48,7 +58,10 @@ export function ProfilesPage(props: ProfilesPageProps) {
   return (
     <div className="stack">
       <div className="banner banner-info">
-        <strong>О локальных профилях</strong>
+        <div className="row" style={{ gap: 8 }}>
+          <IconShield size={16} />
+          <strong>О локальных профилях</strong>
+        </div>
         <div>
           Локальный профиль использует только никнейм (без входа в Microsoft) и подходит для одиночной игры
           и серверов, допускающих вход без проверки аккаунта. Он не предоставляет доступ к серверам,
@@ -57,7 +70,10 @@ export function ProfilesPage(props: ProfilesPageProps) {
       </div>
 
       <form onSubmit={handleCreate} className="card stack-sm">
-        <h4 style={{ margin: 0 }}>Создать локальный профиль</h4>
+        <h4 className="section-header">
+          <IconPlus size={16} />
+          <span>Создать локальный профиль</span>
+        </h4>
         <div className="row">
           <input
             className="input"
@@ -68,14 +84,18 @@ export function ProfilesPage(props: ProfilesPageProps) {
             onChange={(e) => setNewName(e.target.value)}
           />
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            Создать профиль
+            <IconPlus size={15} />
+            <span>Создать профиль</span>
           </button>
         </div>
         {error && <div style={{ color: 'var(--danger)' }}>{error}</div>}
       </form>
 
       <div className="card stack">
-        <h4 style={{ margin: 0 }}>Сохранённые профили</h4>
+        <h4 className="section-header">
+          <IconProfiles size={16} />
+          <span>Сохранённые профили</span>
+        </h4>
         {props.profiles.profiles.length === 0 ? (
           <div className="muted">Профилей пока нет. Создайте первый профиль выше, чтобы запустить игру.</div>
         ) : (
@@ -85,39 +105,49 @@ export function ProfilesPage(props: ProfilesPageProps) {
               const isEditing = editingId === p.id
               return (
                 <div key={p.id} className="card-flat row-between">
-                  <div className="stack-sm" style={{ gap: 2 }}>
-                    {isEditing ? (
-                      <div className="row">
-                        <input
-                          className="input"
-                          style={{ width: 220 }}
-                          maxLength={16}
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          disabled={busy}
-                          onClick={() => void handleRename(p.id)}
-                        >
-                          Сохранить
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => setEditingId(null)}
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="row">
-                        <strong style={{ fontSize: 15 }}>{p.name}</strong>
-                        {active && <span className="badge badge-ok">Активный</span>}
-                      </div>
-                    )}
-                    <div className="subtle mono">Offline UUID: {p.uuid}</div>
+                  <div className="row" style={{ gap: 12 }}>
+                    <PlayerAvatar name={p.name} size={38} />
+                    <div className="stack-sm" style={{ gap: 2 }}>
+                      {isEditing ? (
+                        <div className="row">
+                          <input
+                            className="input"
+                            style={{ width: 220 }}
+                            maxLength={16}
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            disabled={busy}
+                            onClick={() => void handleRename(p.id)}
+                          >
+                            <IconCheck size={13} />
+                            <span>Сохранить</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => setEditingId(null)}
+                          >
+                            <IconCancel size={13} />
+                            <span>Отмена</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="row">
+                          <strong style={{ fontSize: 15 }}>{p.name}</strong>
+                          {active && (
+                            <span className="badge badge-ok">
+                              <IconCheck size={12} />
+                              <span>Активный</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="subtle mono">Offline UUID: {p.uuid}</div>
+                    </div>
                   </div>
                   {!isEditing && (
                     <div className="row">
@@ -128,7 +158,8 @@ export function ProfilesPage(props: ProfilesPageProps) {
                           disabled={busy}
                           onClick={() => void props.onSelect(p.id)}
                         >
-                          Выбрать
+                          <IconCheck size={13} />
+                          <span>Выбрать</span>
                         </button>
                       )}
                       <button
@@ -141,7 +172,8 @@ export function ProfilesPage(props: ProfilesPageProps) {
                           setError(null)
                         }}
                       >
-                        Переименовать
+                        <IconEdit size={13} />
+                        <span>Переименовать</span>
                       </button>
                       <button
                         type="button"
@@ -149,7 +181,8 @@ export function ProfilesPage(props: ProfilesPageProps) {
                         disabled={busy}
                         onClick={() => void props.onDelete(p.id)}
                       >
-                        Удалить
+                        <IconTrash size={13} />
+                        <span>Удалить</span>
                       </button>
                     </div>
                   )}

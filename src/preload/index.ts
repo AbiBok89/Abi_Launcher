@@ -19,6 +19,12 @@ const api: AbiApi = {
   getSystemTheme: () => ipcRenderer.invoke('theme:getSystem'),
   onSystemThemeChanged: (cb) => subscribe('theme:changed', cb),
 
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onWindowMaximizedChanged: (cb) => subscribe('window:maximized', cb),
+
   getProfiles: () => ipcRenderer.invoke('profiles:get'),
   createProfile: (name) => ipcRenderer.invoke('profiles:create', name),
   renameProfile: (id, name) => ipcRenderer.invoke('profiles:rename', id, name),

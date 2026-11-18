@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ConflictChoice, ConflictView } from '@shared/types'
+import { IconAlert, IconCancel, IconCheck, IconShield } from './Icons'
 
 interface ConflictModalProps {
   packName: string
@@ -26,14 +27,17 @@ export function ConflictModal({ packName, conflicts, actionLabel, onCancel, onAp
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card stack">
         <div>
-          <h3 style={{ margin: '0 0 6px' }}>Конфликт изменённых файлов — {packName}</h3>
+          <h3 className="row" style={{ margin: '0 0 8px', gap: 8 }}>
+            <IconAlert size={18} />
+            <span>Конфликт изменённых файлов — {packName}</span>
+          </h3>
           <p className="muted" style={{ margin: 0 }}>
             Обнаружены файлы сборки, которые отличаются от версии в манифесте. Перед заменой или удалением
             лаунчер автоматически сохранит вашу копию в <span className="mono">.abilauncher/backups</span>.
           </p>
         </div>
 
-        <div className="stack-sm">
+        <div className="stack-sm" style={{ maxHeight: 340, overflowY: 'auto', paddingRight: 4 }}>
           {conflicts.map((c) => {
             const val = choices[c.path] ?? 'replace'
             return (
@@ -43,7 +47,8 @@ export function ConflictModal({ packName, conflicts, actionLabel, onCancel, onAp
                     {c.path}
                   </span>
                   <span className={`badge ${c.canKeep ? 'badge-info' : 'badge-warn'}`}>
-                    {c.canKeep ? 'Необязательный' : 'Обязательный файл'}
+                    {c.canKeep ? <IconShield size={12} /> : <IconAlert size={12} />}
+                    <span>{c.canKeep ? 'Необязательный' : 'Обязательный файл'}</span>
                   </span>
                 </div>
                 <div className="subtle">{KIND_LABELS[c.kind]}</div>
@@ -84,10 +89,12 @@ export function ConflictModal({ packName, conflicts, actionLabel, onCancel, onAp
 
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onCancel}>
-            Отмена
+            <IconCancel size={14} />
+            <span>Отмена</span>
           </button>
           <button type="button" className="btn btn-primary" onClick={() => onApply(choices)}>
-            {actionLabel}
+            <IconCheck size={14} />
+            <span>{actionLabel}</span>
           </button>
         </div>
       </div>

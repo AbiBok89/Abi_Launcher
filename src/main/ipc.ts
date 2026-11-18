@@ -125,6 +125,21 @@ export function registerIpcHandlers(
 
   handle('theme:getSystem', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
 
+  handle('window:minimize', () => {
+    getWindow()?.minimize()
+  })
+  handle('window:toggleMaximize', () => {
+    const win = getWindow()
+    if (!win) return false
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+    return win.isMaximized()
+  })
+  handle('window:close', () => {
+    getWindow()?.close()
+  })
+  handle('window:isMaximized', () => getWindow()?.isMaximized() ?? false)
+
   handle('profiles:get', () => service.getProfiles())
   handle('profiles:create', (_ev, name) => service.createProfile(z.string().min(1).max(32).parse(name)))
   handle('profiles:rename', (_ev, id, name) =>

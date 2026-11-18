@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { NewsResult, PackView } from '@shared/types'
+import { IconAlert, IconChevronRight, IconNews, IconRefresh } from '../components/Icons'
 import { formatDateRu } from '../utils/format'
 
 interface NewsPageProps {
@@ -42,7 +43,8 @@ export function NewsPage(props: NewsPageProps) {
             disabled={props.loading}
             onClick={props.onReload}
           >
-            {props.loading ? 'Загрузка…' : 'Обновить новости'}
+            <IconRefresh size={14} className={props.loading ? 'spin-slow' : ''} />
+            <span>{props.loading ? 'Загрузка…' : 'Обновить новости'}</span>
           </button>
         </div>
         <span className="subtle">
@@ -52,7 +54,10 @@ export function NewsPage(props: NewsPageProps) {
 
       {props.news && props.news.errors.length > 0 && (
         <div className="banner banner-warn">
-          <strong>Не удалось загрузить часть новостей:</strong>
+          <div className="row" style={{ gap: 8 }}>
+            <IconAlert size={16} />
+            <strong>Не удалось загрузить часть новостей:</strong>
+          </div>
           {props.news.errors.map((e, i) => (
             <div key={i} className="subtle">
               <span className="mono">{e.repo}</span>: {e.message}
@@ -62,8 +67,11 @@ export function NewsPage(props: NewsPageProps) {
       )}
 
       {filteredItems.length === 0 ? (
-        <div className="card muted">
-          {props.loading ? 'Загрузка новостей из GitHub…' : 'Новостей пока нет.'}
+        <div className="card row" style={{ gap: 10 }}>
+          <IconNews size={18} className="subtle" />
+          <span className="muted">
+            {props.loading ? 'Загрузка новостей из GitHub…' : 'Новостей пока нет.'}
+          </span>
         </div>
       ) : (
         <div className="stack-sm">
@@ -76,7 +84,8 @@ export function NewsPage(props: NewsPageProps) {
                     className="btn btn-sm"
                     onClick={() => props.onSelectPack(item.packKey)}
                   >
-                    {item.packName}
+                    <span>{item.packName}</span>
+                    <IconChevronRight size={13} />
                   </button>
                   {item.packVersion && (
                     <span className="badge badge-info">{item.packVersion}</span>
@@ -84,7 +93,10 @@ export function NewsPage(props: NewsPageProps) {
                 </div>
                 <span className="subtle">{formatDateRu(item.date)}</span>
               </div>
-              <h4 style={{ margin: 0, fontSize: 16 }}>{item.title}</h4>
+              <h4 className="section-header" style={{ fontSize: 16 }}>
+                <IconNews size={15} />
+                <span>{item.title}</span>
+              </h4>
               {item.body && (
                 <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{item.body}</p>
               )}

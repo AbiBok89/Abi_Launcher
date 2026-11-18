@@ -41,12 +41,13 @@ function installSecurityHeaders(): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 780,
+    width: 1240,
+    height: 800,
     minWidth: 960,
     minHeight: 640,
     title: 'AbiLauncher',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1117' : '#f4f6fa',
+    frame: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#080c12' : '#edf2f7',
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -61,6 +62,17 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+  })
+
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized', true)
+    }
+  })
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized', false)
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
