@@ -35,7 +35,7 @@ export function parseRepoInput(input: string, branchOverride?: string): RepoRef 
   if (!SLUG.test(slug) || slug.includes('..')) throw invalid()
   branch = branch || 'main'
   if (!/^[A-Za-z0-9._/-]{1,100}$/.test(branch) || branch.includes('..')) throw invalid('Некорректное имя ветки')
-  return { repo: slug, branch, path: 'launcher/pack.json' }
+  return { repo: slug, branch, path: 'ForLauncher/pack.json' }
 }
 
 function invalid(msg = 'Укажите репозиторий в виде owner/repo или ссылку https://github.com/owner/repo'): LauncherError {

@@ -123,36 +123,42 @@ async function fetchPackInfosFromRepo(
   const PackSchema = createPackInfoSchema(validator)
   const LegacySchema = createLegacyLauncherIndexSchema(validator)
 
-  const primaryUrl = getRawUrl(ref, ref.path, opts)
-  try {
-    const raw = await fetchJsonSafe(primaryUrl, opts)
-    // Пробуем стандартный launcher/pack.json, либо legacy launcher-index.json
-    if (ref.path.endsWith('launcher-index.json')) {
-      const parsedLegacy = LegacySchema.safeParse(raw)
-      if (!parsedLegacy.success) {
-        throw new LauncherError('manifest-invalid', 'Ошибка индекса сборки', formatZodError(parsedLegacy.error))
-      }
-      return legacyIndexToPackInfos(parsedLegacy.data)
-    }
-    const parsed = PackSchema.safeParse(raw)
-    if (parsed.success) return [parsed.data]
+  const candidates =
+    ref.path === 'ForLauncher/pack.json'
+      ? ['ForLauncher/pack.json', 'launcher/pack.json', 'launcher-index.json']
+      : ref.path === 'launcher/pack.json'
+        ? ['launcher/pack.json', 'ForLauncher/pack.json', 'launcher-index.json']
+        : [ref.path]
 
-    const fallbackLegacy = LegacySchema.safeParse(raw)
-    if (fallbackLegacy.success) return legacyIndexToPackInfos(fallbackLegacy.data)
-
-    throw new LauncherError('manifest-invalid', 'Ошибка описания сборки', formatZodError(parsed.error))
-  } catch (err) {
-    if (ref.path === 'launcher/pack.json' && isNotFoundError(err)) {
-      const fallbackUrl = getRawUrl(ref, 'launcher-index.json', opts)
-      const rawFallback = await fetchJsonSafe(fallbackUrl, opts)
-      const parsedLegacy = LegacySchema.safeParse(rawFallback)
-      if (!parsedLegacy.success) {
-        throw new LauncherError('manifest-invalid', 'Ошибка launcher-index.json', formatZodError(parsedLegacy.error))
+  let lastErr: unknown
+  for (let i = 0; i < candidates.length; i++) {
+    const candidatePath = candidates[i]
+    const url = getRawUrl(ref, candidatePath, opts)
+    try {
+      const raw = await fetchJsonSafe(url, opts)
+      if (candidatePath.endsWith('launcher-index.json')) {
+        const parsedLegacy = LegacySchema.safeParse(raw)
+        if (!parsedLegacy.success) {
+          throw new LauncherError('manifest-invalid', 'Ошибка индекса сборки', formatZodError(parsedLegacy.error))
+        }
+        return legacyIndexToPackInfos(parsedLegacy.data)
       }
-      return legacyIndexToPackInfos(parsedLegacy.data)
+      const parsed = PackSchema.safeParse(raw)
+      if (parsed.success) return [parsed.data]
+
+      const fallbackLegacy = LegacySchema.safeParse(raw)
+      if (fallbackLegacy.success) return legacyIndexToPackInfos(fallbackLegacy.data)
+
+      throw new LauncherError('manifest-invalid', 'Ошибка описания сборки', formatZodError(parsed.error))
+    } catch (err) {
+      lastErr = err
+      if (isNotFoundError(err) && i < candidates.length - 1) {
+        continue
+      }
+      throw err
     }
-    throw err
   }
+  throw lastErr
 }
 
 async function loadCoverDataUrl(
@@ -560,50 +566,53 @@ export class CatalogService {
     const loadedSources = new Map<string, News>()
 
     for (const entry of entries) {
-      const newsRel = entry.sourceRef.newsPath ?? entry.packInfo.news ?? 'launcher/news.json'
+      const newsRel = entry.sourceRef.newsPath ?? entry.packInfo.news ?? 'ForLauncher/news.json'
       const cacheKey = `${entry.sourceRef.repo}::${entry.sourceRef.branch}::${newsRel}`
       let newsData = loadedSources.get(cacheKey)
 
       if (!newsData) {
-        const url = getRawUrl(entry.sourceRef, newsRel, opts)
-        try {
-          const raw = await fetchJsonSafe(url, opts, 4 * 1024 * 1024)
-          if (newsRel === 'launcher-index.json') {
-            const parsedLegacy = LegacySchema.safeParse(raw)
-            if (!parsedLegacy.success) {
-              throw new LauncherError('manifest-invalid', 'Ошибка формата новостей', formatZodError(parsedLegacy.error))
-            }
-            newsData = legacyIndexToNews(parsedLegacy.data)
-          } else {
-            const parsed = NewsSchema.safeParse(raw)
-            if (parsed.success) {
-              newsData = parsed.data
+        const candidates =
+          newsRel === 'ForLauncher/news.json'
+            ? ['ForLauncher/news.json', 'launcher/news.json', 'launcher-index.json']
+            : newsRel === 'launcher/news.json'
+              ? ['launcher/news.json', 'ForLauncher/news.json', 'launcher-index.json']
+              : [newsRel]
+
+        let non404Err: unknown = null
+        for (const candidatePath of candidates) {
+          const url = getRawUrl(entry.sourceRef, candidatePath, opts)
+          try {
+            const raw = await fetchJsonSafe(url, opts, 4 * 1024 * 1024)
+            if (candidatePath === 'launcher-index.json') {
+              const parsedLegacy = LegacySchema.safeParse(raw)
+              if (!parsedLegacy.success) {
+                throw new LauncherError('manifest-invalid', 'Ошибка формата новостей', formatZodError(parsedLegacy.error))
+              }
+              newsData = legacyIndexToNews(parsedLegacy.data)
             } else {
-              const fallbackLegacy = LegacySchema.safeParse(raw)
-              if (!fallbackLegacy.success) {
-                throw new LauncherError('manifest-invalid', 'Ошибка формата новостей', formatZodError(parsed.error))
+              const parsed = NewsSchema.safeParse(raw)
+              if (parsed.success) {
+                newsData = parsed.data
+              } else {
+                const fallbackLegacy = LegacySchema.safeParse(raw)
+                if (!fallbackLegacy.success) {
+                  throw new LauncherError('manifest-invalid', 'Ошибка формата новостей', formatZodError(parsed.error))
+                }
+                newsData = legacyIndexToNews(fallbackLegacy.data)
               }
-              newsData = legacyIndexToNews(fallbackLegacy.data)
             }
+            loadedSources.set(cacheKey, newsData)
+            break
+          } catch (e) {
+            if (isAbortError(e)) throw e
+            if (isNotFoundError(e)) continue
+            non404Err = e
+            break
           }
-          loadedSources.set(cacheKey, newsData)
-        } catch (e) {
-          if (isAbortError(e)) throw e
-          // Если у сборки ещё нет отдельного launcher/news.json — не считаем это критическим сбоем, пробуем launcher-index.json
-          if (newsRel === 'launcher/news.json' && isNotFoundError(e)) {
-            try {
-              const rawFallback = await fetchJsonSafe(getRawUrl(entry.sourceRef, 'launcher-index.json', opts), opts)
-              const parsedLegacy = LegacySchema.safeParse(rawFallback)
-              if (parsedLegacy.success) {
-                newsData = legacyIndexToNews(parsedLegacy.data)
-                loadedSources.set(cacheKey, newsData)
-              }
-            } catch {
-              /* ignore fallback miss */
-            }
-          }
-          if (!newsData && !isNotFoundError(e)) {
-            const msg = e instanceof LauncherError ? `${e.title}: ${e.message}` : String(e)
+        }
+        if (!newsData) {
+          if (non404Err) {
+            const msg = non404Err instanceof LauncherError ? `${non404Err.title}: ${non404Err.message}` : String(non404Err)
             errors.push({ repo: entry.sourceRef.repo, message: msg })
           }
           continue

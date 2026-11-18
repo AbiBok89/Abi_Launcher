@@ -27,6 +27,7 @@ export const DEFAULT_EXCLUDES = [
   'versions/**',
   'libraries/**',
   '.mixin.out/**',
+  'ForLauncher/**',
   'launcher/**',
   'schematics/**',
   'xaero/**',
@@ -159,7 +160,7 @@ export async function buildPackRelease(opts: BuildPackReleaseOptions): Promise<B
   const sourceDir = resolve(opts.sourceDir)
   const outDir = resolve(opts.outDir)
   const releaseAssetsDir = join(outDir, 'release-assets')
-  const launcherOutDir = join(outDir, 'launcher')
+  const launcherOutDir = join(outDir, 'ForLauncher')
   await mkdir(releaseAssetsDir, { recursive: true })
   await mkdir(launcherOutDir, { recursive: true })
 
@@ -286,7 +287,7 @@ export async function buildPackRelease(opts: BuildPackReleaseOptions): Promise<B
     recommendedMemoryMb: opts.recommendedMemoryMb ?? 4096,
     manifestUrl: `${releaseBaseUrl}/manifest.json`,
     ...(opts.server ? { server: opts.server } : {}),
-    news: 'launcher/news.json'
+    news: 'ForLauncher/news.json'
   }
 
   const packInfo = PackInfoSchema.parse(packInfoCandidate)
@@ -343,7 +344,7 @@ async function runCli(): Promise<void> {
     [--java 17] \\
     [--memory 6144] \\
     [--server "Сервер:mc.example.com:25565"] \\
-    [--cover "assets/bg-tfg.jpg"] \\
+    [--cover "ForLauncher/bg-tfg.jpg"] \\
     [--summary "Краткое описание"] \\
     [--description "Полное описание"] \\
     [--threshold-mb 4] \\

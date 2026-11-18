@@ -5,12 +5,12 @@
     {
       "repo": "AbiBok89/abi_tfg",
       "branch": "main",
-      "path": "launcher/pack.json"
+      "path": "ForLauncher/pack.json"
     },
     {
       "repo": "example-owner/example-fabric-pack",
       "branch": "main",
-      "path": "launcher/pack.json"
+      "path": "ForLauncher/pack.json"
     }
   ]
 }

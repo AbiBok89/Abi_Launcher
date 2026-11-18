@@ -75,7 +75,7 @@ export const CatalogSchema = z.object({
       z.object({
         repo: repoSlug,
         branch: branch.default('main'),
-        path: relPath.default('launcher/pack.json')
+        path: relPath.default('ForLauncher/pack.json')
       })
     )
     .max(100)
@@ -100,11 +100,11 @@ export function createPackInfoSchema(urlCheck: UrlValidator = isAllowedUrl) {
     manifestUrl: urlSchema,
     server: ServerRefSchema.optional(),
     /** Относительный путь к news.json в репозитории сборки. */
-    news: relPath.default('launcher/news.json')
+    news: relPath.default('ForLauncher/news.json')
   })
 }
 
-/** launcher/pack.json в репозитории сборки — витрина сборки. */
+/** ForLauncher/pack.json в репозитории сборки — витрина сборки. */
 export const PackInfoSchema = createPackInfoSchema()
 export type PackInfo = z.infer<typeof PackInfoSchema>
 

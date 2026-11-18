@@ -16,7 +16,7 @@ AbiLauncher работает с **публичными** GitHub-репозито
     {
       "repo": "AbiBok89/abi_tfg",
       "branch": "main",
-      "path": "launcher/pack.json"
+      "path": "ForLauncher/pack.json"
     }
   ]
 }
@@ -26,21 +26,21 @@ AbiLauncher работает с **публичными** GitHub-репозито
 
 ### Б. Репозиторий конкретной сборки (например `AbiBok89/abi_tfg`)
 
-Рекомендуемая структура:
+Рекомендуемая структура — все файлы для лаунчера лежат в одной папке `ForLauncher/`, чтобы остальное содержимое сборки можно было свободно удалять или заменять:
 
 ```text
 <repo>/
-  launcher/
+  ForLauncher/
     pack.json       # Описание сборки, версии, обложка, сервер, ссылка на manifest.json
     news.json       # Новости конкретной сборки
-    cover.png       # Обложка (PNG/JPEG/WebP, до 5 МБ)
-  ...               # (по желанию) исходные конфиги/скрипты сборки в Git
+    bg-tfg.jpg      # Обложка (PNG/JPEG/WebP, до 5 МБ)
+  ...               # Файлы сборки (mods/, config/, kubejs/ и т.д.)
 ```
 
 А сами файлы версии сборки (`manifest.json`, `pack-part-01.zip`, крупные `.jar` и ресурспаки) публикуются в **GitHub Releases** этого же репозитория!
 
 > [!NOTE]
-> Для обратной совместимости с уже существующим `AbiBok89/abi_tfg` лаунчер умеет читать и корневой `launcher-index.json`, если `launcher/pack.json` отсутствует (HTTP 404).
+> Для обратной совместимости лаунчер умеет читать также `launcher/pack.json` и корневой `launcher-index.json`, если `ForLauncher/pack.json` отсутствует (HTTP 404).
 
 ---
 
@@ -82,11 +82,11 @@ npm run pack-tool -- ^
 
 На Linux вместо `^` используйте `\`.
 
-Инструмент исключает личные и временные папки (`saves`, `screenshots`, `logs`, `versions`, `libraries`, `.git`, `xaero`, `schematics` и т.д.), помечает `options.txt` / `servers.dat` как `mode: "initial"` (ставятся один раз при первой установке) и формирует:
+Инструмент исключает папку `ForLauncher/`, личные и временные папки (`saves`, `screenshots`, `logs`, `versions`, `libraries`, `.git`, `xaero`, `schematics` и т.д.), помечает `options.txt` / `servers.dat` как `mode: "initial"` (ставятся один раз при первой установке) и формирует:
 - `out-release-tfg/release-assets/manifest.json`
 - `out-release-tfg/release-assets/pack-part-01.zip` (и последующие части при необходимости)
 - `out-release-tfg/release-assets/<sha>-<mod>.jar` (крупные файлы)
-- `out-release-tfg/launcher/pack.json`
+- `out-release-tfg/ForLauncher/pack.json`
 
 ### Шаг 2. Создайте GitHub Release
 
@@ -95,10 +95,10 @@ npm run pack-tool -- ^
 3. Перетащите **все файлы из `release-assets/`** (`manifest.json`, `pack-part-*.zip` и крупные `.jar`).
 4. Опубликуйте релиз (не оставляйте в статусе Draft — черновики возвращают HTTP 404).
 
-### Шаг 3. Обновите `launcher/pack.json` и `launcher/news.json`
+### Шаг 3. Обновите `ForLauncher/pack.json` и `ForLauncher/news.json`
 
-1. Скопируйте `out-release-tfg/launcher/pack.json` в папку `launcher/pack.json` репозитория сборки. При необходимости добавьте `cover` (`"launcher/cover.png"` или https-ссылку) и `description`.
-2. При необходимости добавьте новость в `launcher/news.json` (формат см. в `examples/pack-repo/launcher/news.json`).
+1. Скопируйте `out-release-tfg/ForLauncher/pack.json` в папку `ForLauncher/pack.json` репозитория сборки. При необходимости добавьте `cover` (`"ForLauncher/bg-tfg.jpg"` или https-ссылку) и `description`.
+2. При необходимости добавьте новость в `ForLauncher/news.json` (формат см. в `examples/pack-repo/ForLauncher/news.json`).
 3. Сделайте `git commit` и `git push` в ветку `main` репозитория сборки.
 
 ---
@@ -124,8 +124,8 @@ npm run pack-tool -- ^
    - Проверить [`catalog/catalog.json`](../catalog/catalog.json): перечислить все ваши репозитории сборок.
 2. **Репозитории каждой сборки (например `AbiBok89/abi_tfg`)**:
    - Выпустить публичный GitHub Release с `manifest.json` и файлами сборки из `release-assets/` (сгенерированными через `npm run pack-tool`).
-   - Поместить актуальный `launcher/pack.json` (или обновить `manifestUrl` в `launcher-index.json`, если используется старый формат) и `launcher/news.json`.
-   - При необходимости загрузить обложку сборки (`launcher/cover.png` или `assets/bg-tfg.jpg`) и указать реальный `server` (`host`, `port`).
+   - Поместить актуальный `ForLauncher/pack.json` и `ForLauncher/news.json`.
+   - При необходимости загрузить обложку сборки (`ForLauncher/bg-tfg.jpg`) и указать реальный `server` (`host`, `port`).
 3. **Проверка ссылок**:
    - В тестовых примерах `examples/` используются демонстрационные плейсхолдеры `EXAMPLE_OWNER/EXAMPLE_PACK_REPO` и `mc.example.invalid` — перед публикацией собственной новой сборки обязательно замените их на свои реальные значения.
 

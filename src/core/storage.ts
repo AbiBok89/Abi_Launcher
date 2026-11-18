@@ -10,7 +10,7 @@ import { normalizeCatalogUrl } from './github'
 
 export const DEFAULT_CATALOG_URL = 'https://raw.githubusercontent.com/AbiBok89/Abi_Launcher/main/catalog/catalog.json'
 export const DEFAULT_CUSTOM_REPOS = [
-  { repo: 'AbiBok89/abi_tfg', branch: 'main', path: 'launcher/pack.json' }
+  { repo: 'AbiBok89/abi_tfg', branch: 'main', path: 'ForLauncher/pack.json' }
 ]
 
 const NICKNAME_RE = /^[A-Za-z0-9_]{3,16}$/
@@ -54,7 +54,7 @@ const CustomRepoSchema = z.object({
   path: z
     .string()
     .refine((v) => checkRelativePath(v) === null)
-    .default('launcher/pack.json')
+    .default('ForLauncher/pack.json')
 })
 
 const PackOverrideSchema = z.object({

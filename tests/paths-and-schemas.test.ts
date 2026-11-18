@@ -69,10 +69,10 @@ describe('Схемы каталога, сборки, манифеста и но�
     const exCatalog = JSON.parse(readFileSync('examples/catalog-repo/catalog/catalog.json', 'utf8'))
     expect(CatalogSchema.parse(exCatalog).packs.length).toBe(2)
 
-    const exPack = JSON.parse(readFileSync('examples/pack-repo/launcher/pack.json', 'utf8'))
+    const exPack = JSON.parse(readFileSync('examples/pack-repo/ForLauncher/pack.json', 'utf8'))
     expect(PackInfoSchema.parse(exPack).id).toBe('example-fabric-pack')
 
-    const exNews = JSON.parse(readFileSync('examples/pack-repo/launcher/news.json', 'utf8'))
+    const exNews = JSON.parse(readFileSync('examples/pack-repo/ForLauncher/news.json', 'utf8'))
     expect(NewsSchema.parse(exNews).items.length).toBe(1)
 
     const exManifest = JSON.parse(readFileSync('examples/pack-repo/release/manifest.example.json', 'utf8'))
@@ -141,20 +141,41 @@ describe('Схемы каталога, сборки, манифеста и но�
     })
     expect(m.files[0].source).toEqual({ url: 'https://github.com/a/b/releases/download/1/a.jar' })
 
-    const tfgIndexPath = 'D:\\CooodinG\\Working\\abi_tfg\\launcher-index.json'
-    if (existsSync(tfgIndexPath)) {
-      const raw = JSON.parse(readFileSync(tfgIndexPath, 'utf8'))
-      const parsed = LegacyLauncherIndexSchema.parse(raw)
-      const packs = legacyIndexToPackInfos(parsed)
-      const news = legacyIndexToNews(parsed)
-      expect(packs[0].id).toBe('tfg-modern')
-      expect(packs[0].loader).toEqual({ type: 'forge', version: '47.4.13' })
-      expect(packs[0].server).toEqual({
-        name: 'TerraFirmaGreg-Modern',
-        host: 'abibok.20tps.ru',
-        port: 25565
-      })
-      expect(news.items[0].date).toBe('2026-11-14')
+    const legacySample = {
+      news: [
+        { id: 'n1', date: '14.11.2026', title: 'Обновление V0.13.18', content: 'Тест' }
+      ],
+      modpacks: [
+        {
+          id: 'tfg-modern',
+          name: 'TerraFirmaGreg-Modern',
+          version: 'V0.13.18',
+          minecraftVersion: '1.20.1',
+          loader: { type: 'forge', version: '47.4.13' },
+          serverAddress: 'abibok.20tps.ru:25565',
+          backgroundUrl: 'https://raw.githubusercontent.com/AbiBok89/abi_tfg/main/ForLauncher/bg-tfg.jpg',
+          description: 'Описание',
+          manifestUrl: 'https://github.com/AbiBok89/abi_tfg/releases/download/V0.13.18/manifest.json'
+        }
+      ]
+    }
+    const parsedLegacy = LegacyLauncherIndexSchema.parse(legacySample)
+    const legacyPacks = legacyIndexToPackInfos(parsedLegacy)
+    const legacyNews = legacyIndexToNews(parsedLegacy)
+    expect(legacyPacks[0].id).toBe('tfg-modern')
+    expect(legacyPacks[0].loader).toEqual({ type: 'forge', version: '47.4.13' })
+    expect(legacyPacks[0].server).toEqual({
+      name: 'TerraFirmaGreg-Modern',
+      host: 'abibok.20tps.ru',
+      port: 25565
+    })
+    expect(legacyNews.items[0].date).toBe('2026-11-14')
+
+    const tfgForLauncherPack = 'D:\\CooodinG\\Working\\abi_tfg\\ForLauncher\\pack.json'
+    if (existsSync(tfgForLauncherPack)) {
+      const parsedPack = PackInfoSchema.parse(JSON.parse(readFileSync(tfgForLauncherPack, 'utf8')))
+      expect(parsedPack.id).toBe('tfg-modern')
+      expect(parsedPack.news).toBe('ForLauncher/news.json')
     }
   })
 })

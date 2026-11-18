@@ -152,11 +152,14 @@ describe('Профили, настройки, пинг сервера, диаг�
     await mkdir(join(srcPack, 'mods'), { recursive: true })
     await mkdir(join(srcPack, 'config'), { recursive: true })
     await mkdir(join(srcPack, 'saves/myworld'), { recursive: true })
+    await mkdir(join(srcPack, 'ForLauncher'), { recursive: true })
 
     await writeFile(join(srcPack, 'mods/big-mod.jar'), Buffer.alloc(4096, 0x7a))
     await writeFile(join(srcPack, 'config/client.toml'), 'setting = true\n')
     await writeFile(join(srcPack, 'options.txt'), 'fov:80\n')
     await writeFile(join(srcPack, 'saves/myworld/level.dat'), 'secret-save')
+    await writeFile(join(srcPack, 'ForLauncher/pack.json'), '{}')
+    await writeFile(join(srcPack, 'ForLauncher/bg-tfg.jpg'), 'img')
 
     const built = await buildPackRelease({
       sourceDir: srcPack,
@@ -178,6 +181,9 @@ describe('Профили, настройки, пинг сервера, диаг�
 
     const parsedManifest = ManifestSchema.parse(JSON.parse(await readFile(built.manifestPath, 'utf8')))
     expect(parsedManifest.files.some((f) => f.path.startsWith('saves/'))).toBe(false)
+    expect(parsedManifest.files.some((f) => f.path.startsWith('ForLauncher/'))).toBe(false)
+    expect(built.packJsonPath).toMatch(/ForLauncher[\\/]pack\.json$/)
+    expect(built.packInfo.news).toBe('ForLauncher/news.json')
     expect(parsedManifest.files.find((f) => f.path === 'options.txt')?.mode).toBe('initial')
     expect(parsedManifest.files.find((f) => f.path === 'mods/big-mod.jar')?.source).toHaveProperty('url')
   })
