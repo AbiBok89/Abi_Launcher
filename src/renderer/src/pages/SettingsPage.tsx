@@ -3,16 +3,19 @@ import type {
   AfterLaunch,
   AppInfo,
   JavaInfoView,
+  LauncherUpdateState,
   LogEntry,
   Settings,
   ThemeSetting
 } from '@shared/types'
 import type { SystemTheme } from '../../../preload/api'
 import {
+  IconCancel,
   IconCheck,
   IconCpu,
   IconDownloads,
   IconError,
+  IconExternalLink,
   IconFolder,
   IconMonitor,
   IconMoon,
@@ -24,6 +27,7 @@ import {
   IconTerminal,
   IconTrash
 } from '../components/Icons'
+import { formatBytes, formatSpeed } from '../utils/format'
 
 interface SettingsPageProps {
   appInfo: AppInfo | null
@@ -31,6 +35,7 @@ interface SettingsPageProps {
   systemTheme: SystemTheme
   javaList: JavaInfoView[]
   logs: LogEntry[]
+  updateState: LauncherUpdateState | null
   onUpdateSettings: (patch: Partial<Settings>) => Promise<void>
   onPickDirectory: () => Promise<void>
   onPickJava: () => Promise<string | null>
@@ -39,16 +44,50 @@ interface SettingsPageProps {
   onAddRepo: (repo: string, branch?: string) => Promise<void>
   onRemoveRepo: (repo: string) => Promise<void>
   onExportDiagnostics: () => Promise<string | null>
+  onCheckUpdate: () => Promise<void>
+  onDownloadUpdate: () => Promise<void>
+  onCancelUpdateDownload: () => Promise<void>
+  onInstallUpdate: () => Promise<void>
+  onOpenReleasePage: () => Promise<void>
+  onOpenConsole: () => void
+}
+
+const JVM_PRESETS: Array<{ label: string; args: string; title: string }> = [
+  {
+    label: '+ UTF-8',
+    args: '-Dfile.encoding=UTF-8',
+    title: 'Принудительная кодировка UTF-8 для консоли и модов'
+  },
+  {
+    label: '+ ZGC (Java 21+)',
+    args: '-XX:+UseZGC -XX:+ZGenerational',
+    title: 'Поколенческий ZGC (для Minecraft 1.20.5+ на Java 21)'
+  },
+  {
+    label: '+ Таймаут Forge',
+    args: '-Dfml.readTimeout=120',
+    title: 'Увеличивает таймаут сетевого чтения Forge/FML при входе на тяжёлые серверы'
+  }
+]
+
+function appendJvmPreset(current: string, presetArgs: string): string {
+  const existing = current.trim().split(/\s+/).filter(Boolean)
+  const add = presetArgs.split(/\s+/).filter(Boolean)
+  for (const token of add) {
+    if (!existing.includes(token)) existing.push(token)
+  }
+  return existing.join(' ')
 }
 
 export function SettingsPage(props: SettingsPageProps) {
-  const { settings, appInfo } = props
+  const { settings, appInfo, updateState } = props
   const maxMem = appInfo?.totalMemoryMb ?? 16384
 
   const [catalogUrlInput, setCatalogUrlInput] = useState(settings.catalogUrl)
   const [memoryInput, setMemoryInput] = useState(settings.defaultMemoryMb ?? 8192)
   const [widthInput, setWidthInput] = useState(settings.resolution.width)
   const [heightInput, setHeightInput] = useState(settings.resolution.height)
+  const [jvmArgsInput, setJvmArgsInput] = useState(settings.extraJvmArgs)
   const [javaInput, setJavaInput] = useState(settings.javaPath ?? '')
   const [javaCheckInfo, setJavaCheckInfo] = useState<string | null>(null)
   const [newRepo, setNewRepo] = useState('')
@@ -75,6 +114,11 @@ export function SettingsPage(props: SettingsPageProps) {
     return entry.level === 'error'
   })
 
+  const updatePct =
+    updateState && updateState.progressBytesTotal > 0
+      ? Math.min(100, Math.round((updateState.progressBytesDone / updateState.progressBytesTotal) * 100))
+      : 0
+
   return (
     <div className="stack">
       {statusMsg && (
@@ -93,6 +137,158 @@ export function SettingsPage(props: SettingsPageProps) {
           </div>
         </div>
       )}
+
+      <div className="card stack">
+        <div className="row-between">
+          <div>
+            <h3 className="section-header" style={{ marginBottom: 4 }}>
+              <IconDownloads size={18} />
+              <span>Обновление лаунчера (GitHub Releases)</span>
+            </h3>
+            <div className="subtle">
+              Текущая версия: <span className="mono">v{updateState?.currentVersion ?? appInfo?.version ?? '0.1.0'}</span>
+              {' · '}Режим:{' '}
+              {updateState?.installMode === 'portable'
+                ? 'Portable (.exe)'
+                : updateState?.installMode === 'installer'
+                  ? 'Установленный (NSIS)'
+                  : 'Ручной / Dev'}
+              {updateState?.checkedAt
+                ? ` · Проверено: ${new Date(updateState.checkedAt).toLocaleTimeString('ru-RU')}`
+                : ''}
+            </div>
+          </div>
+
+          <div className="row">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={updateState?.phase === 'checking' || updateState?.phase === 'downloading'}
+              onClick={() => void runAction(() => props.onCheckUpdate())}
+            >
+              <IconRefresh size={13} className={updateState?.phase === 'checking' ? 'spin-slow' : ''} />
+              <span>{updateState?.phase === 'checking' ? 'Проверка…' : 'Проверить обновления'}</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void runAction(() => props.onOpenReleasePage())}
+            >
+              <IconExternalLink size={13} />
+              <span>Релизы GitHub</span>
+            </button>
+          </div>
+        </div>
+
+        {updateState?.phase === 'up-to-date' && (
+          <div className="banner banner-info">
+            <div className="row" style={{ gap: 8 }}>
+              <IconCheck size={16} />
+              <span>
+                {updateState.latestVersion
+                  ? `Установлена актуальная версия лаунчера (v${updateState.latestVersion}).`
+                  : 'Релизов лаунчера на GitHub пока нет — используется текущая сборка.'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {(updateState?.phase === 'available' || updateState?.phase === 'downloaded') && (
+          <div className="card-flat stack-sm">
+            <div className="row-between">
+              <div className="row">
+                <span className="badge badge-info">Доступна v{updateState.latestVersion}</span>
+                {updateState.releaseName && <strong>{updateState.releaseName}</strong>}
+              </div>
+              {updateState.asset && (
+                <span className="subtle mono">
+                  {updateState.asset.name} · {formatBytes(updateState.asset.size)}
+                </span>
+              )}
+            </div>
+            {updateState.releaseNotes && (
+              <div className="muted" style={{ whiteSpace: 'pre-line', maxHeight: 140, overflowY: 'auto' }}>
+                {updateState.releaseNotes}
+              </div>
+            )}
+            <div className="row">
+              {updateState.phase === 'available' && updateState.asset && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => void runAction(() => props.onDownloadUpdate())}
+                >
+                  <IconDownloads size={13} />
+                  <span>Скачать обновление</span>
+                </button>
+              )}
+              {updateState.phase === 'downloaded' && updateState.canAutoInstall && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => void runAction(() => props.onInstallUpdate())}
+                >
+                  <IconCheck size={13} />
+                  <span>Установить и перезапустить</span>
+                </button>
+              )}
+              {updateState.phase === 'downloaded' && !updateState.canAutoInstall && (
+                <span className="subtle">
+                  Файл скачан: <span className="mono">{updateState.downloadedPath}</span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {updateState?.phase === 'downloading' && (
+          <div className="card-flat stack-sm">
+            <div className="row-between">
+              <strong>Загрузка обновления v{updateState.latestVersion}…</strong>
+              <div className="row">
+                <span className="subtle">
+                  {updateState.progressBytesTotal > 0
+                    ? `${updatePct}% · ${formatBytes(updateState.progressBytesDone)} / ${formatBytes(updateState.progressBytesTotal)} · ${formatSpeed(updateState.progressSpeed)}`
+                    : 'Загрузка…'}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => void props.onCancelUpdateDownload()}
+                >
+                  <IconCancel size={13} />
+                  <span>Отменить</span>
+                </button>
+              </div>
+            </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${updatePct}%` }} />
+            </div>
+          </div>
+        )}
+
+        {updateState?.phase === 'error' && updateState.error && (
+          <div className="banner banner-error">
+            <div className="row" style={{ gap: 8 }}>
+              <IconError size={16} />
+              <span>Ошибка проверки или загрузки обновления: {updateState.error}</span>
+            </div>
+          </div>
+        )}
+
+        <label className="row subtle" style={{ cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={settings.autoCheckLauncherUpdates}
+            onChange={(e) =>
+              void runAction(() =>
+                props.onUpdateSettings({ autoCheckLauncherUpdates: e.target.checked })
+              )
+            }
+          />
+          <span>Автоматически проверять обновления лаунчера при запуске</span>
+        </label>
+      </div>
 
       <div className="card stack">
         <h3 className="section-header">
@@ -344,6 +540,67 @@ export function SettingsPage(props: SettingsPageProps) {
             </label>
           </div>
         </div>
+
+        <div className="card-flat stack-sm">
+          <div className="row-between">
+            <span style={{ fontWeight: 600 }}>Дополнительные JVM-аргументы</span>
+            <span className="subtle">Переопределяется в параметрах конкретной сборки при необходимости</span>
+          </div>
+          <div className="row">
+            <input
+              className="input mono"
+              style={{ flex: 1 }}
+              placeholder="Например: -Dfile.encoding=UTF-8 -Dfml.readTimeout=120"
+              value={jvmArgsInput}
+              onChange={(e) => setJvmArgsInput(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() =>
+                void runAction(
+                  () => props.onUpdateSettings({ extraJvmArgs: jvmArgsInput.trim() }),
+                  'JVM-аргументы сохранены.'
+                )
+              }
+            >
+              <IconCheck size={13} />
+              <span>Сохранить JVM</span>
+            </button>
+            {(jvmArgsInput.trim() || settings.extraJvmArgs) && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setJvmArgsInput('')
+                  void runAction(
+                    () => props.onUpdateSettings({ extraJvmArgs: '' }),
+                    'Дополнительные JVM-аргументы очищены.'
+                  )
+                }}
+              >
+                <IconTrash size={13} />
+                <span>Сбросить</span>
+              </button>
+            )}
+          </div>
+          <div className="row">
+            {JVM_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className="btn btn-sm"
+                title={preset.title}
+                onClick={() => setJvmArgsInput((cur) => appendJvmPreset(cur, preset.args))}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="subtle">
+            Флаги памяти <span className="mono">-Xms/-Xmx</span> подставляются автоматически по настройке ОЗУ. Если другой GC не указан, сохраняются стандартные параметры G1GC.
+          </div>
+        </div>
       </div>
 
       <div className="card stack">
@@ -547,19 +804,25 @@ export function SettingsPage(props: SettingsPageProps) {
               Экспорт удаляет домашний путь, имя пользователя ОС и возможные токены.
             </div>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() =>
-              void runAction(async () => {
-                const file = await props.onExportDiagnostics()
-                if (file) setStatusMsg(`Диагностический отчёт сохранён: ${file}`)
-              })
-            }
-          >
-            <IconDownloads size={14} />
-            <span>Экспортировать отчёт</span>
-          </button>
+          <div className="row">
+            <button type="button" className="btn" onClick={props.onOpenConsole}>
+              <IconTerminal size={14} />
+              <span>Живая консоль игры</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() =>
+                void runAction(async () => {
+                  const file = await props.onExportDiagnostics()
+                  if (file) setStatusMsg(`Диагностический отчёт сохранён: ${file}`)
+                })
+              }
+            >
+              <IconDownloads size={14} />
+              <span>Экспортировать отчёт</span>
+            </button>
+          </div>
         </div>
 
         <div className="row">
@@ -608,8 +871,8 @@ export function SettingsPage(props: SettingsPageProps) {
             </div>
           </div>
           <div>
-            <strong>Версия лаунчера:</strong> {appInfo?.version ?? '0.1.0'} · Обновление самого лаунчера
-            отделено от сборок и запланировано как следующий этап развития.
+            <strong>Версия лаунчера:</strong> {appInfo?.version ?? '0.1.0'} · Обновления лаунчера
+            проверяются и загружаются из GitHub Releases репозитория AbiBok89/Abi_Launcher.
           </div>
         </div>
       </div>

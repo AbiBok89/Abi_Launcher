@@ -40,7 +40,8 @@ const api: AbiApi = {
   playPack: (packKey, options) => ipcRenderer.invoke('pack:play', packKey, options),
   cancelOperation: (packKey) => ipcRenderer.invoke('pack:cancel', packKey),
 
-  openInstanceFolder: (packKey) => ipcRenderer.invoke('pack:openFolder', packKey),
+  openInstanceFolder: (packKey, subfolder) => ipcRenderer.invoke('pack:openFolder', packKey, subfolder),
+  getLatestCrashReport: (packKey) => ipcRenderer.invoke('pack:latestCrashReport', packKey),
   listJava: () => ipcRenderer.invoke('java:list'),
   testJava: (javaPath) => ipcRenderer.invoke('java:test', javaPath),
 
@@ -50,6 +51,14 @@ const api: AbiApi = {
   getLogs: () => ipcRenderer.invoke('logs:get'),
   onLog: (cb) => subscribe('logs:entry', cb),
   exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
+
+  getLauncherUpdateState: () => ipcRenderer.invoke('launcherUpdate:getState'),
+  checkLauncherUpdate: () => ipcRenderer.invoke('launcherUpdate:check'),
+  downloadLauncherUpdate: () => ipcRenderer.invoke('launcherUpdate:download'),
+  cancelLauncherUpdateDownload: () => ipcRenderer.invoke('launcherUpdate:cancelDownload'),
+  installLauncherUpdate: () => ipcRenderer.invoke('launcherUpdate:install'),
+  openLauncherReleasePage: () => ipcRenderer.invoke('launcherUpdate:openReleasePage'),
+  onLauncherUpdateState: (cb) => subscribe('launcherUpdate:state', cb),
 
   onProgress: (cb) => subscribe('pack:progress', cb),
   onPackState: (cb) => subscribe('pack:state', cb),

@@ -1,7 +1,9 @@
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   CatalogResult,
   ConflictChoice,
+  CrashReportView,
   GameEvent,
   JavaInfoView,
   NewsResult,
@@ -458,6 +460,7 @@ export class LauncherService {
 
       const override = settings.packOverrides[packKey]
       const memoryMb = this.resolvePackMemoryMb(settings, entry.packInfo.recommendedMemoryMb, override?.memoryMb)
+      const extraJvmArgs = override?.extraJvmArgs?.trim() ? override.extraJvmArgs : settings.extraJvmArgs
       const joinServer = opts.joinServer ?? settings.autoJoinServer
 
       this.runningPacks.add(packKey)
@@ -470,6 +473,7 @@ export class LauncherService {
           javaPath: prepared.javaInfo.path,
           profile,
           memoryMb,
+          extraJvmArgs,
           resolution: settings.resolution,
           server: entry.packInfo.server ?? null,
           joinServer,
@@ -769,6 +773,35 @@ export class LauncherService {
 
   async loadNews(): Promise<NewsResult> {
     return this.catalogService.loadNews(this.catalogService.getAllEntries(), this.requestOpts)
+  }
+
+  async getLatestCrashReport(packKey: string): Promise<CrashReportView | null> {
+    const settings = await this.settingsStore.load()
+    const crashDir = join(this.getInstanceDir(settings.installDir, packKey), 'crash-reports')
+    let names: string[]
+    try {
+      names = await readdir(crashDir)
+    } catch {
+      return null
+    }
+    const candidates: Array<{ name: string; fullPath: string; mtimeMs: number }> = []
+    for (const name of names) {
+      if (!/\.(txt|log)$/i.test(name)) continue
+      const fullPath = join(crashDir, name)
+      const info = await stat(fullPath).catch(() => null)
+      if (info?.isFile()) {
+        candidates.push({ name, fullPath, mtimeMs: info.mtimeMs })
+      }
+    }
+    if (candidates.length === 0) return null
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    const latest = candidates[0]
+    const raw = await readFile(latest.fullPath, 'utf8').catch(() => '')
+    return {
+      fileName: latest.name,
+      modifiedAt: new Date(latest.mtimeMs).toISOString(),
+      content: raw.slice(0, 24_000)
+    }
   }
 
   async exportDiagnostics(versions: { launcher: string; electron: string; node: string }): Promise<string> {

@@ -4,6 +4,7 @@ import type {
   CatalogResult,
   ConflictChoice,
   JavaInfoView,
+  LauncherUpdateState,
   LogEntry,
   NewsResult,
   ProgressEvent,
@@ -30,16 +31,18 @@ import {
   IconServers,
   IconSettings,
   IconSun,
+  IconTerminal,
   PlayerAvatar
 } from './components/Icons'
 import { CatalogPage } from './pages/CatalogPage'
+import { ConsolePage, type PackCrashInfo } from './pages/ConsolePage'
 import { DownloadsPage } from './pages/DownloadsPage'
 import { NewsPage } from './pages/NewsPage'
 import { ProfilesPage } from './pages/ProfilesPage'
 import { ServersPage } from './pages/ServersPage'
 import { SettingsPage } from './pages/SettingsPage'
 
-type TabId = 'catalog' | 'downloads' | 'servers' | 'news' | 'profiles' | 'settings'
+type TabId = 'catalog' | 'downloads' | 'servers' | 'news' | 'profiles' | 'console' | 'settings'
 
 const TAB_TITLES: Record<TabId, string> = {
   catalog: 'Каталог сборок',
@@ -47,6 +50,7 @@ const TAB_TITLES: Record<TabId, string> = {
   servers: 'Серверы',
   news: 'Новости',
   profiles: 'Локальные профили',
+  console: 'Консоль и краш-логи',
   settings: 'Настройки и диагностика'
 }
 
@@ -56,6 +60,7 @@ const TAB_ICONS: Record<TabId, ComponentType<{ size?: number; className?: string
   servers: IconServers,
   news: IconNews,
   profiles: IconProfiles,
+  console: IconTerminal,
   settings: IconSettings
 }
 
@@ -85,6 +90,8 @@ export function App() {
   const [news, setNews] = useState<NewsResult | null>(null)
   const [loadingNews, setLoadingNews] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [updateState, setUpdateState] = useState<LauncherUpdateState | null>(null)
+  const [lastCrashByPack, setLastCrashByPack] = useState<Record<string, PackCrashInfo>>({})
 
   // Синхронизируем выбранную тему на корневой элемент документа
   useEffect(() => {
@@ -143,26 +150,30 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
-      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, maxRes] = await Promise.all([
-        window.abi.getAppInfo(),
-        window.abi.getSettings(),
-        window.abi.getSystemTheme(),
-        window.abi.getProfiles(),
-        window.abi.getLogs(),
-        window.abi.windowIsMaximized()
-      ])
+      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, maxRes, updateRes] =
+        await Promise.all([
+          window.abi.getAppInfo(),
+          window.abi.getSettings(),
+          window.abi.getSystemTheme(),
+          window.abi.getProfiles(),
+          window.abi.getLogs(),
+          window.abi.windowIsMaximized(),
+          window.abi.getLauncherUpdateState()
+        ])
       if (infoRes.ok) setAppInfo(infoRes.value)
       if (settingsRes.ok) setSettings(settingsRes.value)
       if (themeRes.ok) setSystemTheme(themeRes.value)
       if (profilesRes.ok) setProfiles(profilesRes.value)
       if (logsRes.ok) setLogs(logsRes.value)
       if (maxRes.ok) setIsMaximized(maxRes.value)
+      if (updateRes.ok) setUpdateState(updateRes.value)
       void refreshJava()
       void reloadCatalog()
     })()
 
     const unsubTheme = window.abi.onSystemThemeChanged((t) => setSystemTheme(t))
     const unsubMax = window.abi.onWindowMaximizedChanged((v) => setIsMaximized(v))
+    const unsubUpdater = window.abi.onLauncherUpdateState((st) => setUpdateState(st))
     const unsubProgress = window.abi.onProgress((ev) => {
       setProgressByPack((prev) => ({ ...prev, [ev.packKey]: ev }))
     })
@@ -201,15 +212,61 @@ export function App() {
         })
       }
     })
+    const unsubGame = window.abi.onGameEvent((ev) => {
+      if (ev.state === 'started') {
+        setLastCrashByPack((prev) => {
+          if (!prev[ev.packKey]) return prev
+          const next = { ...prev }
+          delete next[ev.packKey]
+          return next
+        })
+        return
+      }
+      if (ev.state === 'exited') {
+        const failed = ev.exitCode !== null && ev.exitCode !== undefined && ev.exitCode !== 0
+        if (failed || ev.crashReport) {
+          setLastCrashByPack((prev) => ({
+            ...prev,
+            [ev.packKey]: {
+              packKey: ev.packKey,
+              exitCode: ev.exitCode ?? null,
+              crashReport: ev.crashReport ?? null,
+              crashReportPath: ev.crashReportPath ?? null,
+              ts: new Date().toISOString()
+            }
+          }))
+          if (!ev.crashReport) {
+            void window.abi.getLatestCrashReport(ev.packKey).then((res) => {
+              if (res.ok && res.value) {
+                setLastCrashByPack((prev) => ({
+                  ...prev,
+                  [ev.packKey]: {
+                    ...(prev[ev.packKey] ?? {
+                      packKey: ev.packKey,
+                      exitCode: ev.exitCode ?? null,
+                      crashReportPath: ev.crashReportPath ?? null,
+                      ts: new Date().toISOString()
+                    }),
+                    crashReport: res.value!.content
+                  }
+                }))
+              }
+            })
+          }
+        }
+      }
+    })
     const unsubLog = window.abi.onLog((entry) => {
-      setLogs((prev) => [...prev.slice(-499), entry])
+      setLogs((prev) => [...prev.slice(-1199), entry])
     })
 
     return () => {
       unsubTheme()
       unsubMax()
+      unsubUpdater()
       unsubProgress()
       unsubState()
+      unsubGame()
       unsubLog()
     }
   }, [refreshJava, reloadCatalog])
@@ -261,6 +318,17 @@ export function App() {
   const activeOpsCount = Object.keys(progressByPack).length
   const updatesCount =
     catalog?.packs.filter((p) => p.status === 'update-available').length ?? 0
+  const runningPacksCount =
+    catalog?.packs.filter((p) => p.status === 'running' || p.status === 'launching').length ?? 0
+  const crashCount = Object.keys(lastCrashByPack).length
+  const latestMinecraftLogLine = (() => {
+    for (let i = logs.length - 1; i >= 0; i--) {
+      if (logs[i].scope === 'minecraft') return logs[i].message
+    }
+    return null
+  })()
+  const hasLauncherUpdate =
+    updateState?.phase === 'available' || updateState?.phase === 'downloaded'
   const CurrentTabIcon = TAB_ICONS[tab]
   const ThemeIcon =
     !settings || settings.theme === 'system'
@@ -366,7 +434,8 @@ export function App() {
                 ['servers', 'Серверы', null],
                 ['news', 'Новости', null],
                 ['profiles', 'Профили', null],
-                ['settings', 'Настройки', null]
+                ['console', 'Консоль игры', runningPacksCount || crashCount || null],
+                ['settings', 'Настройки', hasLauncherUpdate ? 1 : null]
               ] as Array<[TabId, string, number | null]>
             ).map(([id, label, badge]) => {
               const Icon = TAB_ICONS[id]
@@ -424,6 +493,20 @@ export function App() {
               <h1 className="topbar-title">{TAB_TITLES[tab]}</h1>
             </div>
             <div className="topbar-actions">
+              {hasLauncherUpdate && updateState?.latestVersion && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => setTab('settings')}
+                >
+                  <IconDownloads size={14} />
+                  <span>
+                    {updateState.phase === 'downloaded'
+                      ? `Установить v${updateState.latestVersion}`
+                      : `Обновление v${updateState.latestVersion}`}
+                  </span>
+                </button>
+              )}
               {updatesCount > 0 && tab !== 'downloads' && (
                 <button
                   type="button"
@@ -454,16 +537,19 @@ export function App() {
               javaList={javaList}
               progressByPack={progressByPack}
               serverStatuses={serverStatuses}
+              lastCrashByPack={lastCrashByPack}
+              latestMinecraftLogLine={latestMinecraftLogLine}
               onReloadCatalog={() => void reloadCatalog()}
               onAddRepo={handleAddRepo}
               onCheckPack={handleCheckPack}
               onInstallPack={handleInstallPack}
               onPlayPack={handlePlayPack}
               onCancelOp={(k) => void window.abi.cancelOperation(k)}
-              onOpenFolder={(k) => void window.abi.openInstanceFolder(k)}
+              onOpenFolder={(k, sub) => void window.abi.openInstanceFolder(k, sub)}
               onUpdateSettings={updateSettings}
               onPingServer={(h, p) => void pingOneServer(h, p)}
               onGoProfiles={() => setTab('profiles')}
+              onOpenConsole={() => setTab('console')}
             />
           )}
 
@@ -526,6 +612,19 @@ export function App() {
             />
           )}
 
+          {tab === 'console' && (
+            <ConsolePage
+              packs={catalog?.packs ?? []}
+              selectedPackKey={selectedPackKey}
+              onSelectPack={setSelectedPackKey}
+              logs={logs}
+              onClearLogs={() => setLogs([])}
+              lastCrashByPack={lastCrashByPack}
+              onOpenFolder={(k, sub) => void window.abi.openInstanceFolder(k, sub)}
+              onLoadLatestCrashReport={async (k) => unwrap(await window.abi.getLatestCrashReport(k))}
+            />
+          )}
+
           {tab === 'settings' && settings && (
             <SettingsPage
               appInfo={appInfo}
@@ -533,6 +632,7 @@ export function App() {
               systemTheme={systemTheme}
               javaList={javaList}
               logs={logs}
+              updateState={updateState}
               onUpdateSettings={updateSettings}
               onPickDirectory={async () => {
                 const dir = unwrap(await window.abi.pickDirectory(settings.installDir))
@@ -544,6 +644,20 @@ export function App() {
               onAddRepo={handleAddRepo}
               onRemoveRepo={handleRemoveRepo}
               onExportDiagnostics={async () => unwrap(await window.abi.exportDiagnostics())}
+              onCheckUpdate={async () => setUpdateState(unwrap(await window.abi.checkLauncherUpdate()))}
+              onDownloadUpdate={async () =>
+                setUpdateState(unwrap(await window.abi.downloadLauncherUpdate()))
+              }
+              onCancelUpdateDownload={async () => {
+                unwrap(await window.abi.cancelLauncherUpdateDownload())
+              }}
+              onInstallUpdate={async () => {
+                unwrap(await window.abi.installLauncherUpdate())
+              }}
+              onOpenReleasePage={async () => {
+                unwrap(await window.abi.openLauncherReleasePage())
+              }}
+              onOpenConsole={() => setTab('console')}
             />
           )}
             </div>

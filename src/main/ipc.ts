@@ -6,10 +6,16 @@ import { z } from 'zod'
 import { LauncherError, toUserError } from '@core/errors'
 import { ensureDir } from '@core/fsutil'
 import type { LauncherService } from '@core/launcherService'
+import { LAUNCHER_RELEASES_PAGE_URL, type LauncherUpdater } from '@core/launcherUpdater'
 import { logger } from '@core/log'
 import type { Result, Settings } from '@shared/types'
 
 const PackKeySchema = z.string().regex(/^[A-Za-z0-9._-]{1,200}$/)
+const SubfolderSchema = z.enum(['root', 'mods', 'screenshots', 'crash-reports', 'logs']).optional()
+const JvmArgsSchema = z
+  .string()
+  .max(2000)
+  .refine((v) => !/[\r\n\0]/.test(v), 'Аргументы JVM не должны содержать переносы строк')
 const ConflictChoiceSchema = z.enum(['replace', 'keep'])
 const ResolutionsSchema = z.record(z.string().max(450), ConflictChoiceSchema).optional()
 
@@ -30,12 +36,15 @@ const SettingsPatchSchema = z
     afterLaunch: z.enum(['keep', 'minimize', 'hide', 'close']).optional(),
     fullVerifyOnLaunch: z.boolean().optional(),
     autoJoinServer: z.boolean().optional(),
+    extraJvmArgs: JvmArgsSchema.optional(),
+    autoCheckLauncherUpdates: z.boolean().optional(),
     packOverrides: z
       .record(
         PackKeySchema,
         z.object({
           memoryMb: z.number().int().min(1024).max(65536).nullable().optional(),
-          javaPath: z.string().max(1024).nullable().optional()
+          javaPath: z.string().max(1024).nullable().optional(),
+          extraJvmArgs: JvmArgsSchema.nullable().optional()
         })
       )
       .optional()
@@ -53,6 +62,7 @@ function assertSenderIsMainFrame(event: IpcMainInvokeEvent, win: BrowserWindow |
 
 export function registerIpcHandlers(
   service: LauncherService,
+  updater: LauncherUpdater,
   getWindow: () => BrowserWindow | null
 ): () => void {
   const registeredChannels: string[] = []
@@ -175,13 +185,36 @@ export function registerIpcHandlers(
   })
   handle('pack:cancel', (_ev, packKey) => service.cancelOperation(PackKeySchema.parse(packKey)))
 
-  handle('pack:openFolder', async (_ev, packKey) => {
+  handle('pack:openFolder', async (_ev, packKey, rawSubfolder) => {
     const key = PackKeySchema.parse(packKey)
+    const subfolder = SubfolderSchema.parse(rawSubfolder)
     const settings = await service.getSettings()
-    const dir = service.getInstanceDir(settings.installDir, key)
-    await ensureDir(dir)
-    const err = await shell.openPath(dir)
+    const baseDir = service.getInstanceDir(settings.installDir, key)
+    const targetDir = subfolder && subfolder !== 'root' ? join(baseDir, subfolder) : baseDir
+    await ensureDir(targetDir)
+    const err = await shell.openPath(targetDir)
     if (err) throw new LauncherError('filesystem', 'Не удалось открыть папку', err)
+    return true
+  })
+
+  handle('pack:latestCrashReport', (_ev, packKey) =>
+    service.getLatestCrashReport(PackKeySchema.parse(packKey))
+  )
+
+  handle('launcherUpdate:getState', () => updater.getState())
+  handle('launcherUpdate:check', () => updater.checkForUpdates())
+  handle('launcherUpdate:download', () => updater.downloadUpdate())
+  handle('launcherUpdate:cancelDownload', () => {
+    updater.cancelDownload()
+    return true
+  })
+  handle('launcherUpdate:install', () => updater.installDownloadedUpdate())
+  handle('launcherUpdate:openReleasePage', async () => {
+    const raw = updater.getState().releaseUrl ?? LAUNCHER_RELEASES_PAGE_URL
+    const safeUrl = raw.startsWith('https://github.com/AbiBok89/Abi_Launcher/')
+      ? raw
+      : LAUNCHER_RELEASES_PAGE_URL
+    await shell.openExternal(safeUrl)
     return true
   })
 
@@ -230,6 +263,10 @@ export function registerIpcHandlers(
     const win = getWindow()
     if (win && !win.isDestroyed()) win.webContents.send('logs:entry', entry)
   })
+  const unsubUpdater = updater.onState((state) => {
+    const win = getWindow()
+    if (win && !win.isDestroyed()) win.webContents.send('launcherUpdate:state', state)
+  })
 
   const onThemeUpdated = () => {
     const win = getWindow()
@@ -245,6 +282,7 @@ export function registerIpcHandlers(
     unsubState()
     unsubGame()
     unsubLogs()
+    unsubUpdater()
     nativeTheme.removeListener('updated', onThemeUpdated)
   }
 }

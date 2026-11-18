@@ -2,11 +2,14 @@ import type {
   AppInfo,
   CatalogResult,
   ConflictChoice,
+  CrashReportView,
   GameEvent,
   JavaInfoView,
+  LauncherUpdateState,
   LogEntry,
   NewsResult,
   PackStateEvent,
+  PackSubfolder,
   PackView,
   ProfilesState,
   ProgressEvent,
@@ -51,7 +54,8 @@ export interface AbiApi {
   ): Promise<Result<PackView>>
   cancelOperation(packKey: string): Promise<Result<boolean>>
 
-  openInstanceFolder(packKey: string): Promise<Result<boolean>>
+  openInstanceFolder(packKey: string, subfolder?: PackSubfolder): Promise<Result<boolean>>
+  getLatestCrashReport(packKey: string): Promise<Result<CrashReportView | null>>
   listJava(): Promise<Result<JavaInfoView[]>>
   testJava(javaPath: string): Promise<Result<JavaInfoView>>
 
@@ -61,6 +65,14 @@ export interface AbiApi {
   getLogs(): Promise<Result<LogEntry[]>>
   onLog(cb: (entry: LogEntry) => void): () => void
   exportDiagnostics(): Promise<Result<string | null>>
+
+  getLauncherUpdateState(): Promise<Result<LauncherUpdateState>>
+  checkLauncherUpdate(): Promise<Result<LauncherUpdateState>>
+  downloadLauncherUpdate(): Promise<Result<LauncherUpdateState>>
+  cancelLauncherUpdateDownload(): Promise<Result<boolean>>
+  installLauncherUpdate(): Promise<Result<void>>
+  openLauncherReleasePage(): Promise<Result<boolean>>
+  onLauncherUpdateState(cb: (state: LauncherUpdateState) => void): () => void
 
   onProgress(cb: (ev: ProgressEvent) => void): () => void
   onPackState(cb: (ev: PackStateEvent) => void): () => void

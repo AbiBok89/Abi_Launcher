@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, nativeTheme, session } from 'electron'
 import { LauncherService } from '@core/launcherService'
+import { LauncherUpdater } from '@core/launcherUpdater'
 import { logger } from '@core/log'
 import { registerIpcHandlers } from './ipc'
 
@@ -8,6 +9,7 @@ const log = logger.scope('main')
 
 let mainWindow: BrowserWindow | null = null
 let service: LauncherService | null = null
+let updater: LauncherUpdater | null = null
 let quitWhenGameExits = false
 let gameRunningCount = 0
 
@@ -100,6 +102,12 @@ app.whenReady().then(() => {
 
   installSecurityHeaders()
   service = new LauncherService(userDataDir)
+  updater = new LauncherUpdater({
+    currentVersion: app.getVersion(),
+    userDataDir,
+    isPackaged: app.isPackaged,
+    onQuit: () => app.quit()
+  })
 
   service.onGameEvent(async (ev) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -134,8 +142,19 @@ app.whenReady().then(() => {
     }
   })
 
-  registerIpcHandlers(service, () => mainWindow)
+  registerIpcHandlers(service, updater, () => mainWindow)
   createWindow()
+
+  void service
+    .getSettings()
+    .then((s) => {
+      if (s.autoCheckLauncherUpdates) {
+        setTimeout(() => {
+          void updater?.checkForUpdates()
+        }, 2500)
+      }
+    })
+    .catch(() => undefined)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

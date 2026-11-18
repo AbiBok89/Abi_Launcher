@@ -24,12 +24,15 @@ export function buildDiagnosticsReport(input: DiagnosticsInput): string {
     afterLaunch: input.settings.afterLaunch,
     fullVerifyOnLaunch: input.settings.fullVerifyOnLaunch,
     autoJoinServer: input.settings.autoJoinServer,
+    extraJvmArgs: logger.redact(input.settings.extraJvmArgs),
+    autoCheckLauncherUpdates: input.settings.autoCheckLauncherUpdates,
     packOverrides: Object.fromEntries(
       Object.entries(input.settings.packOverrides).map(([k, v]) => [
         k,
         {
           memoryMb: v.memoryMb ?? null,
-          javaPath: v.javaPath ? logger.redact(v.javaPath) : null
+          javaPath: v.javaPath ? logger.redact(v.javaPath) : null,
+          extraJvmArgs: v.extraJvmArgs ? logger.redact(v.extraJvmArgs) : null
         }
       ])
     )

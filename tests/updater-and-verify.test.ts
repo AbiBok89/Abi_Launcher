@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +12,7 @@ import { LauncherError } from '@core/errors'
 import { sha256Text } from '@core/hash'
 import { downloadVerified } from '@core/http'
 import { LauncherService } from '@core/launcherService'
+import { LauncherUpdater } from '@core/launcherUpdater'
 import { applyPackSync, planPackSync, readLocalManifest, readPackState } from '@core/packUpdater'
 import { defaultSettings } from '@core/storage'
 import type { Manifest, PackInfo } from '@shared/schemas'
@@ -593,5 +594,85 @@ describe('Обновление сборок, докачка, конфликты 
     const checkedOffline = await offlineService.checkPack(packKey)
     expect(checkedOffline.status).toBe('ready')
     expect(checkedOffline.warnings.some((w) => w.includes('Автономный режим'))).toBe(true)
+  })
+
+  it('читает последний краш-репорт сборки и проверяет/скачивает обновление лаунчера с GitHub Releases', async () => {
+    const uRoot = join(rootTemp, 'crash-and-updater')
+    const svc = new LauncherService(uRoot, localOpts())
+    const settings = await svc.getSettings()
+    const crashDir = join(svc.getInstanceDir(settings.installDir, 'test-pack'), 'crash-reports')
+    await mkdir(crashDir, { recursive: true })
+    const older = join(crashDir, 'crash-2026-01-01.txt')
+    const newer = join(crashDir, 'crash-2026-02-01.txt')
+    await writeFile(older, 'old crash', 'utf8')
+    await writeFile(newer, 'latest NullPointerException', 'utf8')
+    await utimes(older, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
+    await utimes(newer, new Date(1_700_100_000_000), new Date(1_700_100_000_000))
+
+    const crash = await svc.getLatestCrashReport('test-pack')
+    expect(crash?.fileName).toBe('crash-2026-02-01.txt')
+    expect(crash?.content).toContain('latest NullPointerException')
+
+    // 1) Релизов ещё нет (404) -> не ошибка, статус up-to-date
+    const updaterNoRelease = new LauncherUpdater({
+      currentVersion: '0.1.0',
+      userDataDir: uRoot,
+      isPackaged: true,
+      platform: 'win32',
+      arch: 'x64',
+      portableExecutablePath: 'C:\\Abi\\AbiLauncher-0.1.0-win-x64-portable.exe',
+      metadataUrl: `${baseUrl}/updater/missing-release`,
+      requestOpts: { isAllowed: () => true }
+    })
+    const st404 = await updaterNoRelease.checkForUpdates()
+    expect(st404.phase).toBe('up-to-date')
+    expect(st404.latestVersion).toBeNull()
+
+    // 2) Доступна новая версия с digest SHA-256
+    const exeBuf = Buffer.from('MZ-fake-portable-update-binary-payload', 'utf8')
+    const exeSha = sha256Text(exeBuf.toString('utf8'))
+    routes.set('/updater/AbiLauncher-0.2.0-win-x64-portable.exe', exeBuf)
+    routes.set(
+      '/updater/latest',
+      Buffer.from(
+        JSON.stringify({
+          tag_name: 'v0.2.0',
+          name: 'AbiLauncher v0.2.0',
+          body: 'Добавлена консоль игры и автообновление',
+          html_url: 'https://github.com/AbiBok89/Abi_Launcher/releases/tag/v0.2.0',
+          published_at: '2026-11-18T00:00:00Z',
+          assets: [
+            {
+              name: 'AbiLauncher-0.2.0-win-x64-portable.exe',
+              size: exeBuf.length,
+              browser_download_url: `${baseUrl}/updater/AbiLauncher-0.2.0-win-x64-portable.exe`,
+              digest: `sha256:${exeSha}`
+            }
+          ]
+        })
+      )
+    )
+
+    const updater = new LauncherUpdater({
+      currentVersion: '0.1.0',
+      userDataDir: uRoot,
+      isPackaged: true,
+      platform: 'win32',
+      arch: 'x64',
+      portableExecutablePath: 'C:\\Abi\\AbiLauncher-0.1.0-win-x64-portable.exe',
+      metadataUrl: `${baseUrl}/updater/latest`,
+      requestOpts: { isAllowed: () => true }
+    })
+
+    const avail = await updater.checkForUpdates()
+    expect(avail.phase).toBe('available')
+    expect(avail.latestVersion).toBe('0.2.0')
+    expect(avail.canAutoInstall).toBe(true)
+    expect(avail.asset?.name).toBe('AbiLauncher-0.2.0-win-x64-portable.exe')
+
+    const downloaded = await updater.downloadUpdate()
+    expect(downloaded.phase).toBe('downloaded')
+    expect(downloaded.downloadedPath).toBeTruthy()
+    expect(await readFile(downloaded.downloadedPath!, 'utf8')).toBe(exeBuf.toString('utf8'))
   })
 })

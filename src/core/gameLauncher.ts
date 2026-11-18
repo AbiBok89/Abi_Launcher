@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  DEFAULT_EXTRA_JVM_ARGS,
   createMinecraftProcessWatcher,
   launch,
   type LaunchOption,
@@ -32,6 +33,55 @@ export function supportsLegacyServerArg(mcVersion: string): boolean {
   return major === 1 && minor >= 6 && minor < 20
 }
 
+export function parseJvmArgs(raw: string): string[] {
+  const args: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]
+    if (quote) {
+      if (ch === quote) {
+        quote = null
+      } else {
+        current += ch
+      }
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        args.push(current)
+        current = ''
+      }
+      continue
+    }
+    current += ch
+  }
+  if (current.length > 0) args.push(current)
+  return args
+}
+
+const CUSTOM_GC_RE = /^-XX:\+Use(?:G1|Z|Shenandoah|Serial|Parallel|ConcMarkSweep)GC$/
+
+/**
+ * Готовит итоговый список extraJVMArgs: убирает дубли -Xms/-Xmx и сохраняет
+ * стандартные G1GC-флаги, если пользователь не задал другой сборщик мусора.
+ */
+export function buildExtraJvmArgs(raw?: string | null): string[] | undefined {
+  if (!raw || !raw.trim()) return undefined
+  const filtered = parseJvmArgs(raw).filter(
+    (arg) => !/^-Xm[sx]\d+[kmgKMG]?$/i.test(arg)
+  )
+  if (filtered.length === 0) return undefined
+  if (filtered.some((arg) => CUSTOM_GC_RE.test(arg))) {
+    return filtered
+  }
+  return [...DEFAULT_EXTRA_JVM_ARGS.filter((v) => v !== '-Xmx2G'), ...filtered]
+}
+
 export interface LaunchGameOptions {
   packKey: string
   installDir: string
@@ -40,6 +90,7 @@ export interface LaunchGameOptions {
   javaPath: string
   profile: Profile
   memoryMb: number
+  extraJvmArgs?: string | null
   resolution: Settings['resolution']
   server: ServerRef | null
   joinServer: boolean
@@ -78,6 +129,8 @@ export async function launchGame(opts: LaunchGameOptions): Promise<ChildProcess>
   const maxMemory = Math.max(1024, Math.round(opts.memoryMb))
   const minMemory = Math.min(1024, maxMemory)
 
+  const extraJVMArgs = buildExtraJvmArgs(opts.extraJvmArgs)
+
   const launchOption: LaunchOption = {
     gamePath: opts.instanceDir,
     resourcePath: sharedDir,
@@ -93,6 +146,7 @@ export async function launchGame(opts: LaunchGameOptions): Promise<ChildProcess>
     launcherBrand: 'AbiLauncher',
     minMemory,
     maxMemory,
+    ...(extraJVMArgs ? { extraJVMArgs } : {}),
     resolution: opts.resolution.fullscreen
       ? { fullscreen: true }
       : {
@@ -151,7 +205,8 @@ export async function launchGame(opts: LaunchGameOptions): Promise<ChildProcess>
       packKey: opts.packKey,
       state: 'exited',
       exitCode: code,
-      crashReport: reportText ? reportText.slice(0, 8000) : null
+      crashReport: reportText ? reportText.slice(0, 8000) : null,
+      crashReportPath: crashReportLocation ?? null
     })
   })
 

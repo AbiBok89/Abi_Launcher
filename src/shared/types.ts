@@ -23,12 +23,17 @@ export interface Settings {
   fullVerifyOnLaunch: boolean
   /** Подключаться к серверу сборки при запуске, если версия игры это поддерживает. */
   autoJoinServer: boolean
+  /** Глобальные дополнительные аргументы JVM (через пробел). */
+  extraJvmArgs: string
+  /** Автоматически проверять обновления лаунчера через GitHub Releases при запуске. */
+  autoCheckLauncherUpdates: boolean
   packOverrides: Record<string, PackOverride>
 }
 
 export interface PackOverride {
   memoryMb?: number | null
   javaPath?: string | null
+  extraJvmArgs?: string | null
 }
 
 export interface CustomRepo {
@@ -205,11 +210,55 @@ export interface AppInfo {
   defaultInstallDir: string
 }
 
+export type PackSubfolder = 'root' | 'mods' | 'screenshots' | 'crash-reports' | 'logs'
+
+export interface CrashReportView {
+  fileName: string
+  modifiedAt: string
+  content: string
+}
+
 export interface GameEvent {
   packKey: string
   state: 'started' | 'exited'
   exitCode?: number | null
   crashReport?: string | null
+  crashReportPath?: string | null
+}
+
+export type LauncherUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface LauncherReleaseAssetInfo {
+  name: string
+  url: string
+  size: number
+  sha256: string | null
+}
+
+export interface LauncherUpdateState {
+  phase: LauncherUpdatePhase
+  currentVersion: string
+  latestVersion: string | null
+  releaseName: string | null
+  releaseNotes: string | null
+  releaseUrl: string | null
+  publishedAt: string | null
+  asset: LauncherReleaseAssetInfo | null
+  downloadedPath: string | null
+  progressBytesDone: number
+  progressBytesTotal: number
+  progressSpeed: number
+  error: string | null
+  canAutoInstall: boolean
+  installMode: 'portable' | 'installer' | 'manual'
+  checkedAt: string | null
 }
 
 export interface PackStateEvent {

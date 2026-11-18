@@ -57,9 +57,15 @@ const CustomRepoSchema = z.object({
     .default('ForLauncher/pack.json')
 })
 
+const JvmArgsSchema = z
+  .string()
+  .max(2000)
+  .refine((v) => !/[\r\n\0]/.test(v), 'Аргументы JVM не должны содержать переносы строк')
+
 const PackOverrideSchema = z.object({
   memoryMb: z.number().int().min(1024).max(65536).nullable().optional(),
-  javaPath: z.string().max(1024).nullable().optional()
+  javaPath: z.string().max(1024).nullable().optional(),
+  extraJvmArgs: JvmArgsSchema.nullable().optional()
 })
 
 const SettingsSchema = z.object({
@@ -77,6 +83,8 @@ const SettingsSchema = z.object({
   afterLaunch: z.enum(['keep', 'minimize', 'hide', 'close']),
   fullVerifyOnLaunch: z.boolean(),
   autoJoinServer: z.boolean(),
+  extraJvmArgs: JvmArgsSchema.default(''),
+  autoCheckLauncherUpdates: z.boolean().default(true),
   packOverrides: z.record(z.string().max(200), PackOverrideSchema)
 })
 
@@ -104,6 +112,8 @@ export function defaultSettings(userDataDir: string): Settings {
     afterLaunch: 'keep',
     fullVerifyOnLaunch: false,
     autoJoinServer: true,
+    extraJvmArgs: '',
+    autoCheckLauncherUpdates: true,
     packOverrides: {}
   }
 }
@@ -215,7 +225,8 @@ export class SettingsStore {
     for (const [k, v] of Object.entries(settings.packOverrides)) {
       packOverrides[k] = {
         memoryMb: clampMem(v.memoryMb),
-        javaPath: v.javaPath ?? null
+        javaPath: v.javaPath ?? null,
+        extraJvmArgs: v.extraJvmArgs ?? null
       }
     }
     return {

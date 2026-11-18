@@ -350,6 +350,36 @@ export function IconClose({ size = 12 }: IconProps) {
   )
 }
 
+export function IconCamera({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z" />
+      <circle cx="12" cy="13" r="3.2" />
+    </svg>
+  )
+}
+
+export function IconPackage({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M16.5 9.4 7.55 4.24" />
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="M3.29 7 12 12l8.71-5" />
+      <path d="M12 22V12" />
+    </svg>
+  )
+}
+
+export function IconExternalLink({ size = 14, className }: IconProps) {
+  return (
+    <svg {...baseProps(size, className)}>
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  )
+}
+
 export function StatusIcon({ status, size = 13 }: { status: PackStatus; size?: number }) {
   switch (status) {
     case 'ready':

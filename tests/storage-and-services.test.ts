@@ -9,8 +9,18 @@ import {
   resolveForgeArtifactVersion
 } from '@xmcl/installer'
 import { buildDiagnosticsReport } from '@core/diagnostics'
-import { supportsLegacyServerArg, supportsQuickPlay } from '@core/gameLauncher'
+import {
+  buildExtraJvmArgs,
+  parseJvmArgs,
+  supportsLegacyServerArg,
+  supportsQuickPlay
+} from '@core/gameLauncher'
 import { requiredJavaMajor } from '@core/javaManager'
+import {
+  compareSemver,
+  parseSha256Digest,
+  selectLauncherAsset
+} from '@core/launcherUpdater'
 import { logger } from '@core/log'
 import { pingMinecraftServer } from '@core/serverPing'
 import {
@@ -208,5 +218,61 @@ describe('Профили, настройки, пинг сервера, диаг�
     })
     expect(reportText).not.toContain('super_secret_12345')
     expect(reportText).toContain('"profilesCount": 2')
+  })
+
+  it('корректно разбирает дополнительные JVM-аргументы, сохраняет их в настройках и подбирает релиз лаунчера', async () => {
+    expect(parseJvmArgs('-Dfile.encoding=UTF-8 "-Dname=Abi Pack"')).toEqual([
+      '-Dfile.encoding=UTF-8',
+      '-Dname=Abi Pack'
+    ])
+    expect(buildExtraJvmArgs('')).toBeUndefined()
+    expect(buildExtraJvmArgs('-Xmx8G -Xms1G')).toBeUndefined()
+
+    const withDefaultGc = buildExtraJvmArgs('-Dfile.encoding=UTF-8 -Xmx6G')
+    expect(withDefaultGc).toContain('-XX:+UseG1GC')
+    expect(withDefaultGc).toContain('-Dfile.encoding=UTF-8')
+    expect(withDefaultGc).not.toContain('-Xmx6G')
+
+    const withZgc = buildExtraJvmArgs('-XX:+UseZGC -Dfile.encoding=UTF-8')
+    expect(withZgc).toEqual(['-XX:+UseZGC', '-Dfile.encoding=UTF-8'])
+
+    const jvmStore = new SettingsStore(join(tmpRoot, 'settings-jvm'))
+    const saved = await jvmStore.update({
+      extraJvmArgs: '-Dfile.encoding=UTF-8',
+      autoCheckLauncherUpdates: false,
+      packOverrides: {
+        pack1: { extraJvmArgs: '-XX:+UseZGC' }
+      }
+    })
+    expect(saved.extraJvmArgs).toBe('-Dfile.encoding=UTF-8')
+    expect(saved.autoCheckLauncherUpdates).toBe(false)
+    expect(saved.packOverrides.pack1?.extraJvmArgs).toBe('-XX:+UseZGC')
+    await expect(jvmStore.update({ extraJvmArgs: 'bad\narg' })).rejects.toThrow()
+
+    expect(compareSemver('v0.2.0', '0.1.0')).toBe(1)
+    expect(compareSemver('0.1.0', '0.1.0')).toBe(0)
+    expect(compareSemver('0.1.0-beta.1', '0.1.0')).toBe(-1)
+    expect(parseSha256Digest('sha256:' + 'A'.repeat(64))).toBe('a'.repeat(64))
+
+    const pickedPortable = selectLauncherAsset(
+      [
+        {
+          name: 'AbiLauncher-0.2.0-win-x64.exe',
+          size: 90_000_000,
+          browser_download_url: 'https://github.com/AbiBok89/Abi_Launcher/releases/download/v0.2.0/AbiLauncher-0.2.0-win-x64.exe'
+        },
+        {
+          name: 'AbiLauncher-0.2.0-win-x64-portable.exe',
+          size: 100_000_000,
+          browser_download_url: 'https://github.com/AbiBok89/Abi_Launcher/releases/download/v0.2.0/AbiLauncher-0.2.0-win-x64-portable.exe',
+          digest: 'sha256:' + 'b'.repeat(64)
+        }
+      ],
+      'win32',
+      'x64',
+      'portable'
+    )
+    expect(pickedPortable?.name).toBe('AbiLauncher-0.2.0-win-x64-portable.exe')
+    expect(pickedPortable?.sha256).toBe('b'.repeat(64))
   })
 })

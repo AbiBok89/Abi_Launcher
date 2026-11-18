@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type {
   CatalogResult,
   ConflictChoice,
   JavaInfoView,
   PackStatus,
+  PackSubfolder,
   PackView,
   ProfilesState,
   ProgressEvent,
@@ -13,19 +14,23 @@ import type {
 } from '@shared/types'
 import { ConflictModal } from '../components/ConflictModal'
 import { ErrorBanner } from '../components/ErrorBanner'
+import type { PackCrashInfo } from './ConsolePage'
 import {
   IconAlert,
+  IconCamera,
   IconCancel,
   IconCheck,
   IconCopy,
   IconCpu,
   IconDownloads,
   IconFolder,
+  IconPackage,
   IconPlay,
   IconPlus,
   IconRefresh,
   IconServers,
   IconShield,
+  IconTerminal,
   IconWifiOff,
   StatusIcon
 } from '../components/Icons'
@@ -49,6 +54,8 @@ interface CatalogPageProps {
   javaList: JavaInfoView[]
   progressByPack: Record<string, ProgressEvent>
   serverStatuses: Record<string, ServerStatus>
+  lastCrashByPack: Record<string, PackCrashInfo>
+  latestMinecraftLogLine: string | null
   onReloadCatalog: () => void
   onAddRepo: (repo: string, branch?: string) => Promise<void>
   onCheckPack: (key: string) => Promise<void>
@@ -58,10 +65,11 @@ interface CatalogPageProps {
     opts?: { resolutions?: Record<string, ConflictChoice>; joinServer?: boolean }
   ) => Promise<boolean>
   onCancelOp: (key: string) => void
-  onOpenFolder: (key: string) => void
+  onOpenFolder: (key: string, subfolder?: PackSubfolder) => void
   onUpdateSettings: (patch: Partial<Settings>) => Promise<void>
   onPingServer: (host: string, port?: number) => void
   onGoProfiles: () => void
+  onOpenConsole: () => void
 }
 
 function DefaultCoverSvg({ name }: { name: string }) {
@@ -103,10 +111,16 @@ export function CatalogPage(props: CatalogPageProps) {
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null)
   const [conflictMode, setConflictMode] = useState<'install' | 'play' | null>(null)
   const [actionError, setActionError] = useState<UserError | null>(null)
+  const [packJvmInput, setPackJvmInput] = useState('')
 
   const packs = props.catalog?.packs ?? []
   const selected: PackView | null =
     packs.find((p) => p.key === props.selectedPackKey) ?? packs[0] ?? null
+  const packOverride = selected && props.settings ? props.settings.packOverrides[selected.key] : undefined
+
+  useEffect(() => {
+    setPackJvmInput(packOverride?.extraJvmArgs ?? '')
+  }, [selected?.key, packOverride?.extraJvmArgs])
 
   const activeProgress = selected ? props.progressByPack[selected.key] : undefined
   const isBusy =
@@ -207,8 +221,6 @@ export function CatalogPage(props: CatalogPageProps) {
     setTimeout(() => setCopiedAddr((cur) => (cur === addr ? null : cur)), 1800)
   }
 
-  const packOverride = selected && props.settings ? props.settings.packOverrides[selected.key] : undefined
-
   const setPackMemoryOverride = (memoryMb: number | null) => {
     if (!selected || !props.settings) return
     void props.onUpdateSettings({
@@ -225,6 +237,16 @@ export function CatalogPage(props: CatalogPageProps) {
       packOverrides: {
         ...props.settings.packOverrides,
         [selected.key]: { ...packOverride, javaPath }
+      }
+    })
+  }
+
+  const setPackJvmOverride = (extraJvmArgs: string | null) => {
+    if (!selected || !props.settings) return
+    void props.onUpdateSettings({
+      packOverrides: {
+        ...props.settings.packOverrides,
+        [selected.key]: { ...packOverride, extraJvmArgs }
       }
     })
   }
@@ -480,12 +502,66 @@ export function CatalogPage(props: CatalogPageProps) {
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => props.onOpenFolder(selected.key)}
+                  onClick={() => props.onOpenFolder(selected.key, 'root')}
                 >
                   <IconFolder size={15} />
                   <span>Папка сборки</span>
                 </button>
               </div>
+
+              <div className="row" style={{ gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => props.onOpenFolder(selected.key, 'mods')}
+                >
+                  <IconPackage size={13} />
+                  <span>mods/</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => props.onOpenFolder(selected.key, 'screenshots')}
+                >
+                  <IconCamera size={13} />
+                  <span>screenshots/</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => props.onOpenFolder(selected.key, 'crash-reports')}
+                >
+                  <IconAlert size={13} />
+                  <span>crash-reports/</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => props.onOpenFolder(selected.key, 'logs')}
+                >
+                  <IconFolder size={13} />
+                  <span>logs/</span>
+                </button>
+                <button type="button" className="btn btn-sm" onClick={props.onOpenConsole}>
+                  <IconTerminal size={13} />
+                  <span>Консоль игры</span>
+                </button>
+              </div>
+
+              {(selected.status === 'running' || selected.status === 'launching') && (
+                <div className="card-flat row-between">
+                  <div className="row" style={{ minWidth: 0, flex: 1 }}>
+                    <span className="status-dot dot-live" />
+                    <span className="subtle mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {props.latestMinecraftLogLine ?? 'Minecraft запускается…'}
+                    </span>
+                  </div>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={props.onOpenConsole}>
+                    <IconTerminal size={13} />
+                    <span>Живая консоль</span>
+                  </button>
+                </div>
+              )}
 
               {activeProgress && (
                 <div className="card-flat stack-sm">
@@ -535,6 +611,37 @@ export function CatalogPage(props: CatalogPageProps) {
                   onRetry={() => void handlePrimaryAction(selected)}
                   retryLabel="Повторить"
                 />
+              )}
+
+              {props.lastCrashByPack[selected.key] && (
+                <div className="banner banner-warn">
+                  <div className="row-between">
+                    <div className="row" style={{ gap: 8 }}>
+                      <IconAlert size={16} />
+                      <strong>
+                        Последний вылет игры (код {props.lastCrashByPack[selected.key].exitCode ?? '?'})
+                      </strong>
+                    </div>
+                    <div className="row">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => props.onOpenFolder(selected.key, 'crash-reports')}
+                      >
+                        <IconFolder size={13} />
+                        <span>Открыть crash-reports/</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={props.onOpenConsole}
+                      >
+                        <IconTerminal size={13} />
+                        <span>Открыть краш-лог в консоли</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {selected.conflicts.length > 0 && (
@@ -622,6 +729,43 @@ export function CatalogPage(props: CatalogPageProps) {
                       ))}
                     </select>
                   </label>
+
+                  <div className="stack-sm" style={{ gap: 4 }}>
+                    <span className="subtle">JVM-аргументы для этой сборки</span>
+                    <div className="row">
+                      <input
+                        className="input mono"
+                        style={{ flex: 1 }}
+                        placeholder={
+                          props.settings?.extraJvmArgs
+                            ? `По умолчанию: ${props.settings.extraJvmArgs}`
+                            : 'Как в общих настройках (опционально)'
+                        }
+                        value={packJvmInput}
+                        onChange={(e) => setPackJvmInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => setPackJvmOverride(packJvmInput.trim() || null)}
+                      >
+                        <IconCheck size={13} />
+                        <span>Сохранить</span>
+                      </button>
+                      {packOverride?.extraJvmArgs && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => {
+                            setPackJvmInput('')
+                            setPackJvmOverride(null)
+                          }}
+                        >
+                          Сброс
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="card-flat stack-sm">
