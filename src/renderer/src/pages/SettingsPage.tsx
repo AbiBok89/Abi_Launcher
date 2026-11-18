@@ -46,7 +46,7 @@ export function SettingsPage(props: SettingsPageProps) {
   const maxMem = appInfo?.totalMemoryMb ?? 16384
 
   const [catalogUrlInput, setCatalogUrlInput] = useState(settings.catalogUrl)
-  const [memoryInput, setMemoryInput] = useState(settings.defaultMemoryMb ?? 4096)
+  const [memoryInput, setMemoryInput] = useState(settings.defaultMemoryMb ?? 8192)
   const [widthInput, setWidthInput] = useState(settings.resolution.width)
   const [heightInput, setHeightInput] = useState(settings.resolution.height)
   const [javaInput, setJavaInput] = useState(settings.javaPath ?? '')

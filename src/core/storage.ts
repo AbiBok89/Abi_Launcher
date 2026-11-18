@@ -20,9 +20,9 @@ export function totalSystemMemoryMb(): number {
 }
 
 export function computeDefaultMemoryMb(totalMb = totalSystemMemoryMb()): number {
-  const half = Math.floor(totalMb / 2)
-  const rounded = Math.round(half / 512) * 512
-  return Math.max(2048, Math.min(8192, rounded))
+  if (totalMb >= 10240) return 8192
+  const safe = Math.floor((totalMb - 1024) / 512) * 512
+  return Math.max(2048, safe)
 }
 
 /**

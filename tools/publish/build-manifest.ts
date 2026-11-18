@@ -284,7 +284,7 @@ export async function buildPackRelease(opts: BuildPackReleaseOptions): Promise<B
     version: opts.version,
     minecraft: opts.minecraft,
     loader: opts.loader,
-    recommendedMemoryMb: opts.recommendedMemoryMb ?? 4096,
+    recommendedMemoryMb: opts.recommendedMemoryMb ?? 8192,
     manifestUrl: `${releaseBaseUrl}/manifest.json`,
     ...(opts.server ? { server: opts.server } : {}),
     news: 'ForLauncher/news.json'
@@ -390,7 +390,7 @@ async function runCli(): Promise<void> {
     repo: args.repo,
     releaseTag: args.tag ?? args.version,
     javaMajor: args.java ? Number(args.java) : undefined,
-    recommendedMemoryMb: args.memory ? Number(args.memory) : 4096,
+    recommendedMemoryMb: args.memory ? Number(args.memory) : 8192,
     summary: args.summary,
     description: args.description,
     cover: args.cover,

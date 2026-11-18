@@ -16,6 +16,7 @@ import { pingMinecraftServer } from '@core/serverPing'
 import {
   ProfileStore,
   SettingsStore,
+  computeDefaultMemoryMb,
   defaultSettings,
   offlineUuidFromName,
   validateNickname
@@ -76,6 +77,11 @@ describe('Профили, настройки, пинг сервера, диаг�
   })
 
   it('сохраняет настройки и проверяет корректность путей и памяти', async () => {
+    expect(computeDefaultMemoryMb(16384)).toBe(8192)
+    expect(computeDefaultMemoryMb(15800)).toBe(8192)
+    expect(computeDefaultMemoryMb(8192)).toBe(7168)
+    expect(computeDefaultMemoryMb(4096)).toBe(3072)
+
     const dataDir = join(tmpRoot, 'settings-dir')
     const customGameDir = join(tmpRoot, 'Мои сборки Minecraft')
     const store = new SettingsStore(dataDir)

@@ -95,7 +95,7 @@ export function createPackInfoSchema(urlCheck: UrlValidator = isAllowedUrl) {
     version: z.string().min(1).max(40),
     minecraft: mcVersion,
     loader: LoaderSchema,
-    recommendedMemoryMb: z.number().int().min(1024).max(65536).default(4096),
+    recommendedMemoryMb: z.number().int().min(1024).max(65536).default(8192),
     minMemoryMb: z.number().int().min(512).max(65536).optional(),
     manifestUrl: urlSchema,
     server: ServerRefSchema.optional(),
@@ -267,7 +267,7 @@ export function createLegacyLauncherIndexSchema(urlCheck: UrlValidator = isAllow
           backgroundUrl: z.union([relPath, urlSchema]).optional(),
           description: z.string().max(5000).default(''),
           summary: z.string().max(200).optional(),
-          recommendedMemoryMb: z.number().int().min(1024).max(65536).default(4096),
+          recommendedMemoryMb: z.number().int().min(1024).max(65536).default(8192),
           minMemoryMb: z.number().int().min(512).max(65536).optional(),
           manifestUrl: urlSchema
         })
