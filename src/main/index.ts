@@ -45,8 +45,13 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 800,
-    minWidth: 960,
-    minHeight: 640,
+    minWidth: 1240,
+    minHeight: 800,
+    maxWidth: 1240,
+    maxHeight: 800,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     title: 'AbiLauncher',
     frame: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#080c12' : '#edf2f7',
@@ -64,17 +69,6 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
-  })
-
-  mainWindow.on('maximize', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('window:maximized', true)
-    }
-  })
-  mainWindow.on('unmaximize', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('window:maximized', false)
-    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

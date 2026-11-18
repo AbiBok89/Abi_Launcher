@@ -146,7 +146,7 @@ export function SettingsPage(props: SettingsPageProps) {
               <span>Обновление лаунчера (GitHub Releases)</span>
             </h3>
             <div className="subtle">
-              Текущая версия: <span className="mono">v{updateState?.currentVersion ?? appInfo?.version ?? '0.1.0'}</span>
+              Текущая версия: <span className="mono">v{updateState?.currentVersion ?? appInfo?.version ?? '0.1.1'}</span>
               {' · '}Режим:{' '}
               {updateState?.installMode === 'portable'
                 ? 'Portable (.exe)'
@@ -871,7 +871,7 @@ export function SettingsPage(props: SettingsPageProps) {
             </div>
           </div>
           <div>
-            <strong>Версия лаунчера:</strong> {appInfo?.version ?? '0.1.0'} · Обновления лаунчера
+            <strong>Версия лаунчера:</strong> {appInfo?.version ?? '0.1.1'} · Обновления лаунчера
             проверяются и загружаются из GitHub Releases репозитория AbiBok89/Abi_Launcher.
           </div>
         </div>

@@ -20,14 +20,12 @@ import {
   IconChevronRight,
   IconClose,
   IconDownloads,
-  IconMaximize,
   IconMinimize,
   IconMonitor,
   IconMoon,
   IconNews,
   IconProfiles,
   IconRefresh,
-  IconRestore,
   IconServers,
   IconSettings,
   IconSun,
@@ -78,7 +76,6 @@ export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [systemTheme, setSystemTheme] = useState<SystemTheme>('dark')
-  const [isMaximized, setIsMaximized] = useState(false)
   const [profiles, setProfiles] = useState<ProfilesState>({ profiles: [], selectedId: null })
   const [catalog, setCatalog] = useState<CatalogResult | null>(null)
   const [loadingCatalog, setLoadingCatalog] = useState(false)
@@ -150,29 +147,25 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
-      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, maxRes, updateRes] =
-        await Promise.all([
-          window.abi.getAppInfo(),
-          window.abi.getSettings(),
-          window.abi.getSystemTheme(),
-          window.abi.getProfiles(),
-          window.abi.getLogs(),
-          window.abi.windowIsMaximized(),
-          window.abi.getLauncherUpdateState()
-        ])
+      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, updateRes] = await Promise.all([
+        window.abi.getAppInfo(),
+        window.abi.getSettings(),
+        window.abi.getSystemTheme(),
+        window.abi.getProfiles(),
+        window.abi.getLogs(),
+        window.abi.getLauncherUpdateState()
+      ])
       if (infoRes.ok) setAppInfo(infoRes.value)
       if (settingsRes.ok) setSettings(settingsRes.value)
       if (themeRes.ok) setSystemTheme(themeRes.value)
       if (profilesRes.ok) setProfiles(profilesRes.value)
       if (logsRes.ok) setLogs(logsRes.value)
-      if (maxRes.ok) setIsMaximized(maxRes.value)
       if (updateRes.ok) setUpdateState(updateRes.value)
       void refreshJava()
       void reloadCatalog()
     })()
 
     const unsubTheme = window.abi.onSystemThemeChanged((t) => setSystemTheme(t))
-    const unsubMax = window.abi.onWindowMaximizedChanged((v) => setIsMaximized(v))
     const unsubUpdater = window.abi.onLauncherUpdateState((st) => setUpdateState(st))
     const unsubProgress = window.abi.onProgress((ev) => {
       setProgressByPack((prev) => ({ ...prev, [ev.packKey]: ev }))
@@ -262,7 +255,6 @@ export function App() {
 
     return () => {
       unsubTheme()
-      unsubMax()
       unsubUpdater()
       unsubProgress()
       unsubState()
@@ -356,7 +348,7 @@ export function App() {
         <div className="titlebar-brand">
           <AbiLogo size={20} />
           <span className="titlebar-name">AbiLauncher</span>
-          <span className="titlebar-ver">v{appInfo?.version ?? '0.1.0'}</span>
+          <span className="titlebar-ver">v{appInfo?.version ?? '0.1.1'}</span>
         </div>
 
         <div className="titlebar-right">
@@ -400,15 +392,6 @@ export function App() {
               onClick={() => void window.abi.windowMinimize()}
             >
               <IconMinimize size={14} />
-            </button>
-            <button
-              type="button"
-              className="win-btn"
-              aria-label={isMaximized ? 'Восстановить окно' : 'Развернуть окно'}
-              title={isMaximized ? 'Восстановить' : 'Развернуть'}
-              onClick={() => void window.abi.windowToggleMaximize()}
-            >
-              {isMaximized ? <IconRestore size={14} /> : <IconMaximize size={14} />}
             </button>
             <button
               type="button"
