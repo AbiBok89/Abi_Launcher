@@ -252,14 +252,14 @@ export function CatalogPage(props: CatalogPageProps) {
       {props.catalog?.fromCache && (
         <div className="banner banner-warn">
           <div className="row-between">
-            <strong>GitHub недоступен — показана сохранённая витрина</strong>
+            <strong>GitHub недоступен — показаны сохранённые сборки</strong>
             <button type="button" className="btn btn-sm" onClick={props.onReloadCatalog}>
               Повторить проверку
             </button>
           </div>
           <div>
             {props.catalog.catalogError ??
-              'Запуск заблокирован до успешной проверки актуальности сборки через GitHub.'}
+              'Уже установленные сборки можно запускать без интернета (автономный режим). Для установки новых сборок и проверки обновлений требуется связь с GitHub.'}
           </div>
         </div>
       )}

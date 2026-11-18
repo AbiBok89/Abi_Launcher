@@ -15,7 +15,7 @@
     "test": "vitest run",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux",
-    "pack-tool": "tsx tools/publish/build-manifest.ts"
+    "pack-tool": "tsx --tsconfig tsconfig.node.json tools/publish/build-manifest.ts"
   },
   "overrides": {
     "@xmcl/unzip": "2.1.2"

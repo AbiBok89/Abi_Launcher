@@ -1,7 +1,14 @@
 import { copyFile, lstat, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { LAUNCHER_META_DIR, matchesAny, pathKey } from '@shared/paths'
-import type { FileMode, Manifest, ManifestFile } from '@shared/schemas'
+import {
+  createManifestSchema,
+  isAllowedUrl,
+  type FileMode,
+  type Manifest,
+  type ManifestFile,
+  type UrlValidator
+} from '@shared/schemas'
 import type { ConflictChoice, ConflictView, Stage } from '@shared/types'
 import { extractZipEntries, type ZipExtractSpec } from './archive'
 import { LauncherError, throwIfAborted } from './errors'
@@ -96,6 +103,24 @@ export interface ApplyOptions extends RequestOptions {
 
 export function stateFilePath(instanceDir: string): string {
   return join(instanceDir, LAUNCHER_META_DIR, 'state.json')
+}
+
+export function localManifestPath(instanceDir: string): string {
+  return join(instanceDir, LAUNCHER_META_DIR, 'manifest.json')
+}
+
+export async function readLocalManifest(
+  instanceDir: string,
+  urlCheck: UrlValidator = isAllowedUrl
+): Promise<Manifest | null> {
+  try {
+    const raw = await readJsonFile<unknown>(localManifestPath(instanceDir))
+    if (!raw) return null
+    const parsed = createManifestSchema(urlCheck).safeParse(raw)
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
 }
 
 export async function readPackState(instanceDir: string): Promise<PackInstanceState | null> {
@@ -653,6 +678,7 @@ export async function applyPackSync(
     managed: nextManaged
   }
 
+  await writeJsonAtomic(localManifestPath(instanceDir), manifest)
   await writeJsonAtomic(stateFilePath(instanceDir), nextState)
   await removeQuiet(stagingDir)
 

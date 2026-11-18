@@ -13,7 +13,8 @@ import type {
   ServerStatus,
   Settings
 } from '@shared/types'
-import { CatalogRequestOptions, CatalogService } from './catalogService'
+import { isAllowedUrl, type Manifest, type PackInfo } from '@shared/schemas'
+import { CatalogRequestOptions, CatalogService, saveLocalPackMeta } from './catalogService'
 import { buildDiagnosticsReport } from './diagnostics'
 import { LauncherError, isAbortError, toUserError } from './errors'
 import { ensureDir } from './fsutil'
@@ -22,7 +23,7 @@ import { parseRepoInput } from './github'
 import { discoverJavaInstallations, ensureJavaRuntime, validateJavaExecutable } from './javaManager'
 import { logger } from './log'
 import { ensureMinecraftAndLoader } from './minecraftInstaller'
-import { applyPackSync, planPackSync, readPackState } from './packUpdater'
+import { applyPackSync, planPackSync, readLocalManifest, readPackState } from './packUpdater'
 import { pingMinecraftServer } from './serverPing'
 import { ProfileStore, SettingsStore, totalSystemMemoryMb } from './storage'
 
@@ -247,10 +248,14 @@ export class LauncherService {
         cancellable: true
       })
 
-      const { pack, manifest } = await this.catalogService.fetchPackAndManifest(entry.sourceRef, {
-        ...this.requestOpts,
-        signal: ctrl.signal
-      })
+      const fetched = await this.fetchPackOrOffline(
+        packKey,
+        entry.sourceRef,
+        instanceDir,
+        'check',
+        ctrl.signal
+      )
+      const { pack, manifest, offline } = fetched
       entry.packInfo = pack
 
       const state = await readPackState(instanceDir)
@@ -270,6 +275,20 @@ export class LauncherService {
         })!
       }
 
+      if (!manifest) {
+        return this.updateView(packKey, {
+          version: pack.version,
+          minecraft: pack.minecraft,
+          loader: pack.loader,
+          server: pack.server ?? null,
+          installedVersion,
+          status: 'ready',
+          lastError: null,
+          conflicts: [],
+          warnings: ['Автономный режим: GitHub недоступен, проверка обновлений пропущена.']
+        })!
+      }
+
       const plan = await planPackSync(instanceDir, manifest, {
         fullVerify: settings.fullVerifyOnLaunch || installedVersion !== manifest.version,
         signal: ctrl.signal,
@@ -282,11 +301,30 @@ export class LauncherService {
           })
       })
 
+      if (offline) {
+        const missingRequired = plan.toDownload.filter((f) => f.required)
+        if (missingRequired.length > 0) {
+          throw new LauncherError(
+            'offline',
+            'Не хватает обязательных файлов',
+            `Отсутствуют файлы сборки (${missingRequired.length}), а GitHub сейчас недоступен.`,
+            'Подключитесь к интернету, чтобы докачать недостающие файлы.'
+          )
+        }
+      }
+
       let nextStatus: PackStatus = 'ready'
       if (plan.conflicts.length > 0) nextStatus = 'conflict'
-      else if (plan.toDownload.length > 0 || plan.toDelete.length > 0 || installedVersion !== manifest.version) {
+      else if (
+        !offline &&
+        (plan.toDownload.length > 0 || plan.toDelete.length > 0 || installedVersion !== manifest.version)
+      ) {
         nextStatus = 'update-available'
       }
+
+      const warnings = offline
+        ? ['Автономный режим: GitHub недоступен, проверка обновлений пропущена.', ...plan.warnings]
+        : plan.warnings
 
       return this.updateView(packKey, {
         version: pack.version,
@@ -297,7 +335,7 @@ export class LauncherService {
         status: nextStatus,
         lastError: null,
         conflicts: plan.conflicts,
-        warnings: plan.warnings
+        warnings
       })!
     } catch (e) {
       const userErr = toUserError(e)
@@ -503,6 +541,48 @@ export class LauncherService {
     return Math.min(maxSafe, base)
   }
 
+  private async fetchPackOrOffline(
+    packKey: string,
+    sourceRef: NonNullable<ReturnType<CatalogService['getEntry']>>['sourceRef'],
+    instanceDir: string,
+    mode: 'install' | 'play' | 'check',
+    signal: AbortSignal
+  ): Promise<{ pack: PackInfo; manifest: Manifest | null; offline: boolean }> {
+    const entry = this.catalogService.getEntry(packKey)
+    try {
+      const { pack, manifest } = await this.catalogService.fetchPackAndManifest(sourceRef, {
+        ...this.requestOpts,
+        signal
+      })
+      if (entry) entry.packInfo = pack
+      await saveLocalPackMeta(instanceDir, {
+        schemaVersion: 1,
+        packKey,
+        sourceRef,
+        packInfo: pack,
+        coverDataUrl: entry?.view.coverDataUrl ?? null
+      }).catch(() => undefined)
+      return { pack, manifest, offline: false }
+    } catch (e) {
+      const isNetworkErr =
+        e instanceof LauncherError && (e.code === 'offline' || e.code === 'github-unavailable')
+      if (!isNetworkErr || mode === 'install') throw e
+
+      const state = await readPackState(instanceDir)
+      if (!state?.version) throw e
+
+      const localManifest = await readLocalManifest(
+        instanceDir,
+        this.requestOpts.isAllowed ?? isAllowedUrl
+      )
+      const fallbackPack: PackInfo | undefined = entry?.packInfo
+      if (!fallbackPack) throw e
+
+      log.warn(`GitHub недоступен, используем локальный запуск сборки ${packKey} (версия ${state.version})`)
+      return { pack: fallbackPack, manifest: localManifest, offline: true }
+    }
+  }
+
   private async syncAndPrepare(
     packKey: string,
     sourceRef: NonNullable<ReturnType<CatalogService['getEntry']>>['sourceRef'],
@@ -526,64 +606,35 @@ export class LauncherService {
       cancellable: true
     })
 
-    // 1. Всегда живая онлайн-проверка pack.json и manifest.json
-    const { pack, manifest } = await this.catalogService.fetchPackAndManifest(sourceRef, {
-      ...this.requestOpts,
+    // 1. Онлайн-проверка pack.json и manifest.json (или локальный офлайн-режим для уже установленной сборки)
+    const { pack, manifest, offline } = await this.fetchPackOrOffline(
+      packKey,
+      sourceRef,
+      instanceDir,
+      operation,
       signal
-    })
-    const entry = this.catalogService.getEntry(packKey)
-    if (entry) entry.packInfo = pack
+    )
 
     await ensureDir(instanceDir)
     const state = await readPackState(instanceDir)
-    const fullVerify = operation === 'install' || settings.fullVerifyOnLaunch || state?.version !== manifest.version
 
-    // 2. Сверка фактических файлов сборки
-    const plan = await planPackSync(instanceDir, manifest, {
-      fullVerify,
-      signal,
-      onProgress: (p) =>
-        this.emitProgress({
-          packKey,
-          operation,
-          ...p,
-          cancellable: true
-        })
-    })
+    let targetVersion = state?.version ?? pack.version
+    let targetMc = pack.minecraft
+    let targetLoader = pack.loader
+    let targetJavaMajor: number | undefined
 
-    this.updateView(packKey, {
-      version: pack.version,
-      minecraft: pack.minecraft,
-      loader: pack.loader,
-      server: pack.server ?? null,
-      conflicts: plan.conflicts,
-      warnings: plan.warnings
-    })
+    if (manifest) {
+      targetVersion = manifest.version
+      targetMc = manifest.minecraft
+      targetLoader = manifest.loader
+      targetJavaMajor = manifest.java?.major
 
-    // Проверяем нерешённые конфликты до загрузки
-    for (const conflict of plan.conflicts) {
-      const choice = resolutions[conflict.path]
-      if (!choice || (choice === 'keep' && !conflict.canKeep)) {
-        throw new LauncherError(
-          'conflict',
-          'Обнаружены изменённые файлы сборки',
-          `Необходимо выбрать действие для ${plan.conflicts.length} изменённых файлов перед продолжением.`,
-          'Выберите замену с резервной копией или сохранение вашей версии (для необязательных файлов).'
-        )
-      }
-    }
+      const fullVerify =
+        operation === 'install' || settings.fullVerifyOnLaunch || state?.version !== manifest.version
 
-    // 3. Применение обновлений (если нужно скачать, удалить или разрешить конфликты)
-    if (
-      plan.toDownload.length > 0 ||
-      plan.toDelete.length > 0 ||
-      plan.conflicts.length > 0 ||
-      !state ||
-      state.version !== manifest.version
-    ) {
-      this.updateView(packKey, { status: 'downloading' })
-      await applyPackSync(instanceDir, manifest, plan, resolutions, {
-        ...this.requestOpts,
+      // 2. Сверка фактических файлов сборки
+      const plan = await planPackSync(instanceDir, manifest, {
+        fullVerify,
         signal,
         onProgress: (p) =>
           this.emitProgress({
@@ -593,6 +644,79 @@ export class LauncherService {
             cancellable: true
           })
       })
+
+      const warnings = offline
+        ? ['Запуск в автономном режиме: GitHub недоступен, проверка обновлений пропущена.', ...plan.warnings]
+        : plan.warnings
+
+      this.updateView(packKey, {
+        version: pack.version,
+        minecraft: pack.minecraft,
+        loader: pack.loader,
+        server: pack.server ?? null,
+        conflicts: plan.conflicts,
+        warnings
+      })
+
+      if (offline) {
+        const missingRequired = plan.toDownload.filter((f) => f.required)
+        if (missingRequired.length > 0) {
+          throw new LauncherError(
+            'offline',
+            'Не хватает файлов сборки для запуска без интернета',
+            `Отсутствуют обязательные файлы (${missingRequired.length}), а GitHub сейчас недоступен.`,
+            'Подключитесь к интернету, чтобы докачать недостающие файлы.'
+          )
+        }
+      }
+
+      // Проверяем нерешённые конфликты
+      for (const conflict of plan.conflicts) {
+        const choice = resolutions[conflict.path]
+        if (!choice || (choice === 'keep' && !conflict.canKeep)) {
+          throw new LauncherError(
+            'conflict',
+            'Обнаружены изменённые файлы сборки',
+            `Необходимо выбрать действие для ${plan.conflicts.length} изменённых файлов перед продолжением.`,
+            'Выберите замену с резервной копией или сохранение вашей версии (для необязательных файлов).'
+          )
+        }
+        if (offline && choice === 'replace' && conflict.kind !== 'obsolete-modified') {
+          throw new LauncherError(
+            'offline',
+            'Для восстановления файла нужен интернет',
+            `Файл «${conflict.path}» изменён и требует загрузки эталонной версии с GitHub.`,
+            'Подключитесь к интернету для восстановления файла.'
+          )
+        }
+      }
+
+      // 3. Применение обновлений (только при доступе к GitHub)
+      if (
+        !offline &&
+        (plan.toDownload.length > 0 ||
+          plan.toDelete.length > 0 ||
+          plan.conflicts.length > 0 ||
+          !state ||
+          state.version !== manifest.version)
+      ) {
+        this.updateView(packKey, { status: 'downloading' })
+        await applyPackSync(instanceDir, manifest, plan, resolutions, {
+          ...this.requestOpts,
+          signal,
+          onProgress: (p) =>
+            this.emitProgress({
+              packKey,
+              operation,
+              ...p,
+              cancellable: true
+            })
+        })
+      }
+    } else {
+      this.updateView(packKey, {
+        warnings: ['Запуск в автономном режиме: GitHub недоступен, проверка обновлений пропущена.']
+      })
     }
 
     // 4. Java + Minecraft + Loader
@@ -601,9 +725,9 @@ export class LauncherService {
     const { resolvedVersion, javaInfo } = await ensureMinecraftAndLoader({
       installDir: settings.installDir,
       instanceDir,
-      minecraftVersion: manifest.minecraft,
-      loader: manifest.loader,
-      manifestJavaMajor: manifest.java?.major,
+      minecraftVersion: targetMc,
+      loader: targetLoader,
+      manifestJavaMajor: targetJavaMajor,
       signal,
       resolveJava: (major) =>
         ensureJavaRuntime(major, settings.installDir, {
@@ -626,8 +750,8 @@ export class LauncherService {
         })
     })
 
-    log.info(`Сборка ${packKey} готова (MC ${manifest.minecraft}, версия ${manifest.version}, Java ${javaInfo.version})`)
-    return { version: manifest.version, resolvedVersion, javaInfo }
+    log.info(`Сборка ${packKey} готова (MC ${targetMc}, версия ${targetVersion}, Java ${javaInfo.version}${offline ? ', офлайн' : ''})`)
+    return { version: targetVersion, resolvedVersion, javaInfo }
   }
 
   async listJava(): Promise<JavaInfoView[]> {

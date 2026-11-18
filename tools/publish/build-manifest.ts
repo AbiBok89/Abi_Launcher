@@ -31,6 +31,14 @@ export const DEFAULT_EXCLUDES = [
   'schematics/**',
   'xaero/**',
   'XaeroWaypoints*/**',
+  'local/crash_assistant/**',
+  'local/ftbchunks/**',
+  'fancymenu_data/fancymenu_temp/**',
+  'fancymenu_data/last_world.fmdata',
+  'gtceu/prospection_cache/**',
+  'ESM/ServerWorld/**',
+  'mods/.index/**',
+  'tacz/.export-state.json',
   'usercache.json',
   'usernamecache.json',
   'launcher-index.json',
@@ -44,7 +52,11 @@ export const INITIAL_USER_FILES = [
   'optionsof.txt',
   'optionsshaders.txt',
   'servers.dat',
-  'servers.dat_old'
+  'servers.dat_old',
+  'emi.json',
+  'patchouli_data.json',
+  'tfcanvilhelper_gui.properties',
+  'rhino.local.properties'
 ]
 
 export const OPTIONAL_MANAGED_GLOBS = [
@@ -157,7 +169,7 @@ export async function buildPackRelease(opts: BuildPackReleaseOptions): Promise<B
 
   const excludes = [...DEFAULT_EXCLUDES, ...(opts.extraExcludes ?? [])]
   const threshold = opts.archiveThresholdBytes ?? 4 * 1024 * 1024
-  const maxPartBytes = opts.maxPartBytes ?? 150 * 1024 * 1024
+  const maxPartBytes = opts.maxPartBytes ?? 200 * 1024 * 1024
 
   const scanned = await collectFiles(sourceDir, excludes)
   const directItems: typeof scanned = []
@@ -331,7 +343,11 @@ async function runCli(): Promise<void> {
     [--java 17] \\
     [--memory 6144] \\
     [--server "Сервер:mc.example.com:25565"] \\
-    [--threshold-mb 4]
+    [--cover "assets/bg-tfg.jpg"] \\
+    [--summary "Краткое описание"] \\
+    [--description "Полное описание"] \\
+    [--threshold-mb 4] \\
+    [--max-part-mb 200]
 `)
     process.exit(args.help ? 0 : 1)
   }
@@ -361,6 +377,7 @@ async function runCli(): Promise<void> {
   }
 
   const thresholdMb = args['threshold-mb'] ? Number(args['threshold-mb']) : 4
+  const maxPartMb = args['max-part-mb'] ? Number(args['max-part-mb']) : 200
   const res = await buildPackRelease({
     sourceDir: args.source,
     outDir: args.out,
@@ -373,8 +390,12 @@ async function runCli(): Promise<void> {
     releaseTag: args.tag ?? args.version,
     javaMajor: args.java ? Number(args.java) : undefined,
     recommendedMemoryMb: args.memory ? Number(args.memory) : 4096,
+    summary: args.summary,
+    description: args.description,
+    cover: args.cover,
     server,
-    archiveThresholdBytes: thresholdMb * 1024 * 1024
+    archiveThresholdBytes: thresholdMb * 1024 * 1024,
+    maxPartBytes: maxPartMb * 1024 * 1024
   })
 
   console.log('Готово!')

@@ -79,6 +79,17 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp('^' + re + '$', 'i')
 }
 
+const globCache = new Map<string, RegExp>()
+
+function cachedGlob(glob: string): RegExp {
+  let re = globCache.get(glob)
+  if (!re) {
+    re = globToRegExp(glob)
+    globCache.set(glob, re)
+  }
+  return re
+}
+
 export function matchesAny(path: string, globs: readonly string[]): boolean {
-  return globs.some((g) => globToRegExp(g).test(path))
+  return globs.some((g) => cachedGlob(g).test(path))
 }

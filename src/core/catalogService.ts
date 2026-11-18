@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { LAUNCHER_META_DIR } from '@shared/paths'
 import type {
   CatalogResult,
   NewsItemView,
@@ -183,12 +184,83 @@ async function loadCoverDataUrl(
 
 export async function readInstalledPackVersion(installDir: string, packKey: string): Promise<string | null> {
   try {
-    const statePath = join(installDir, 'instances', packKey, '.abilauncher', 'state.json')
+    const statePath = join(installDir, 'instances', packKey, LAUNCHER_META_DIR, 'state.json')
     const data = JSON.parse(await readFile(statePath, 'utf8')) as Partial<StoredPackRecord>
     return typeof data.version === 'string' && data.version.length > 0 ? data.version : null
   } catch {
     return null
   }
+}
+
+export interface LocalPackMeta {
+  schemaVersion: 1
+  packKey: string
+  sourceRef: PackSourceRef
+  packInfo: PackInfo
+  coverDataUrl?: string | null
+}
+
+export async function saveLocalPackMeta(instanceDir: string, meta: LocalPackMeta): Promise<void> {
+  await ensureDir(join(instanceDir, LAUNCHER_META_DIR))
+  await writeJsonAtomic(join(instanceDir, LAUNCHER_META_DIR, 'pack.json'), meta)
+}
+
+async function scanLocalInstalledPacks(
+  installDir: string,
+  urlCheck: UrlValidator = isAllowedUrl
+): Promise<Array<{ view: PackView; sourceRef: PackSourceRef; packInfo: PackInfo }>> {
+  const instancesRoot = join(installDir, 'instances')
+  let dirs
+  try {
+    dirs = await readdir(instancesRoot, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const PackSchema = createPackInfoSchema(urlCheck)
+  const out: Array<{ view: PackView; sourceRef: PackSourceRef; packInfo: PackInfo }> = []
+
+  for (const dir of dirs) {
+    if (!dir.isDirectory()) continue
+    const packKey = dir.name
+    const installedVersion = await readInstalledPackVersion(installDir, packKey)
+    if (!installedVersion) continue
+
+    const metaPath = join(instancesRoot, packKey, LAUNCHER_META_DIR, 'pack.json')
+    const rawMeta = await readJsonFile<Partial<LocalPackMeta>>(metaPath).catch(() => null)
+    if (!rawMeta || rawMeta.schemaVersion !== 1 || !rawMeta.sourceRef || !rawMeta.packInfo) continue
+
+    const parsedPack = PackSchema.safeParse(rawMeta.packInfo)
+    if (!parsedPack.success) continue
+    const info = parsedPack.data
+
+    const view: PackView = {
+      key: packKey,
+      id: info.id,
+      source: {
+        repo: rawMeta.sourceRef.repo,
+        branch: rawMeta.sourceRef.branch,
+        official: Boolean(rawMeta.sourceRef.official)
+      },
+      name: info.name,
+      summary: info.summary,
+      description: info.description,
+      coverDataUrl: rawMeta.coverDataUrl ?? null,
+      version: installedVersion,
+      minecraft: info.minecraft,
+      loader: info.loader,
+      recommendedMemoryMb: info.recommendedMemoryMb,
+      minMemoryMb: info.minMemoryMb ?? null,
+      server: info.server ?? null,
+      installedVersion,
+      status: 'ready',
+      lastError: null,
+      conflicts: [],
+      warnings: []
+    }
+    out.push({ view, sourceRef: rawMeta.sourceRef, packInfo: info })
+  }
+  return out
 }
 
 export class CatalogService {
@@ -303,6 +375,15 @@ export class CatalogService {
 
           packs.push(view)
           this.loaded.set(packKey, { view, sourceRef, packInfo: info })
+          if (installedVersion) {
+            await saveLocalPackMeta(join(settings.installDir, 'instances', packKey), {
+              schemaVersion: 1,
+              packKey,
+              sourceRef,
+              packInfo: info,
+              coverDataUrl
+            }).catch(() => undefined)
+          }
           cacheEntries.push({
             ...view,
             sourceRef,
@@ -320,11 +401,12 @@ export class CatalogService {
 
     const loadedAt = new Date().toISOString()
 
-    // Если сеть недоступна и ничего не загрузилось — показываем кэш витрины, но помечаем fromCache.
+    // Если сеть недоступна — восстанавливаем витрину из кэша и установленных сборок (офлайн-режим).
     if (packs.length === 0 && (catalogError || errors.length > 0)) {
+      const restored: PackView[] = []
+      const restoredKeys = new Set<string>()
       const cached = await readJsonFile<CatalogCacheFile>(cachePath).catch(() => null)
-      if (cached && Array.isArray(cached.packs) && cached.packs.length > 0) {
-        const restored: PackView[] = []
+      if (cached && Array.isArray(cached.packs)) {
         for (const item of cached.packs) {
           const installedVersion = await readInstalledPackVersion(settings.installDir, item.key)
           const status: PackStatus = installedVersion ? 'ready' : 'not-installed'
@@ -349,6 +431,7 @@ export class CatalogService {
             warnings: []
           }
           restored.push(view)
+          restoredKeys.add(item.key)
           this.loaded.set(item.key, {
             view,
             sourceRef: item.sourceRef,
@@ -369,12 +452,25 @@ export class CatalogService {
             }
           })
         }
+      }
+
+      const localInstalled = await scanLocalInstalledPacks(settings.installDir, getUrlValidator(opts))
+      for (const local of localInstalled) {
+        if (restoredKeys.has(local.view.key)) continue
+        restored.push(local.view)
+        restoredKeys.add(local.view.key)
+        this.loaded.set(local.view.key, local)
+      }
+
+      if (restored.length > 0) {
         return {
           packs: restored,
           errors,
           fromCache: true,
-          catalogError: catalogError ?? 'GitHub недоступен. Показана сохранённая витрина (запуск заблокирован до успешной проверки).',
-          loadedAt: cached.loadedAt
+          catalogError:
+            catalogError ??
+            'GitHub недоступен. Показаны сохранённые сборки — установленные сборки доступны для запуска в офлайн-режиме.',
+          loadedAt: cached?.loadedAt ?? loadedAt
         }
       }
     }

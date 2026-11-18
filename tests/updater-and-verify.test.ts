@@ -7,11 +7,12 @@ import { pipeline } from 'node:stream/promises'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import yazl from 'yazl'
 import { extractZipEntries } from '@core/archive'
-import { CatalogService, makePackKey } from '@core/catalogService'
+import { CatalogService, makePackKey, saveLocalPackMeta } from '@core/catalogService'
 import { LauncherError } from '@core/errors'
 import { sha256Text } from '@core/hash'
 import { downloadVerified } from '@core/http'
-import { applyPackSync, planPackSync, readPackState } from '@core/packUpdater'
+import { LauncherService } from '@core/launcherService'
+import { applyPackSync, planPackSync, readLocalManifest, readPackState } from '@core/packUpdater'
 import { defaultSettings } from '@core/storage'
 import type { Manifest, PackInfo } from '@shared/schemas'
 
@@ -513,5 +514,84 @@ describe('Обновление сборок, докачка, конфликты 
     await expect(extractZipEntries(zipPath, map, extractDir)).rejects.toMatchObject({
       code: 'manifest-invalid'
     })
+  })
+
+  it('сохраняет локальный manifest/pack.json и позволяет проверять и показывать установленную сборку без интернета', async () => {
+    const offlineRoot = join(rootTemp, 'offline-mode')
+    const installDir = join(offlineRoot, 'gamedata')
+    const repo = 'OfflineOwner/OfflinePack'
+    const packKey = makePackKey(repo, 'offline-pack')
+    const instanceDir = join(installDir, 'instances', packKey)
+
+    const fileBuf = Buffer.from('offline-mod-content')
+    const manifest: Manifest = {
+      schemaVersion: 1,
+      packId: 'offline-pack',
+      version: '1.0.0',
+      minecraft: '1.20.1',
+      loader: { type: 'vanilla' },
+      archives: [],
+      files: [
+        {
+          path: 'mods/offline.jar',
+          size: fileBuf.length,
+          sha256: sha256Text(fileBuf),
+          mode: 'managed',
+          required: true,
+          source: { url: `${baseUrl}/offline/offline.jar` }
+        }
+      ]
+    }
+    const packInfo: PackInfo = {
+      schemaVersion: 1,
+      id: 'offline-pack',
+      name: 'Офлайн сборка',
+      summary: 'Тест офлайна',
+      description: '',
+      version: '1.0.0',
+      minecraft: '1.20.1',
+      loader: { type: 'vanilla' },
+      recommendedMemoryMb: 2048,
+      manifestUrl: `${baseUrl}/offline/manifest.json`,
+      news: 'launcher/news.json'
+    }
+
+    routes.set('/offline/offline.jar', fileBuf)
+    const plan = await planPackSync(instanceDir, manifest, { fullVerify: true })
+    await applyPackSync(instanceDir, manifest, plan, {}, localOpts())
+    await saveLocalPackMeta(instanceDir, {
+      schemaVersion: 1,
+      packKey,
+      sourceRef: { repo, branch: 'main', path: 'launcher/pack.json', official: false, packId: 'offline-pack' },
+      packInfo
+    })
+
+    const savedManifest = await readLocalManifest(instanceDir, localOpts().isAllowed)
+    expect(savedManifest?.version).toBe('1.0.0')
+
+    // Имитируем полное отсутствие сети (неработающий локальный порт)
+    const offlineService = new LauncherService(offlineRoot, {
+      isAllowed: () => true,
+      resolveRawUrl: () => 'http://127.0.0.1:1/launcher/pack.json',
+      timeoutMs: 1200
+    })
+    await offlineService.updateSettings({
+      installDir,
+      catalogUrl: ''
+    })
+    // Добавляем репо напрямую в settings
+    await offlineService.settingsStore.update({
+      customRepos: [{ repo, branch: 'main', path: 'launcher/pack.json' }]
+    })
+
+    const catRes = await offlineService.loadCatalog()
+    expect(catRes.fromCache).toBe(true)
+    expect(catRes.packs).toHaveLength(1)
+    expect(catRes.packs[0].key).toBe(packKey)
+    expect(catRes.packs[0].status).toBe('ready')
+
+    const checkedOffline = await offlineService.checkPack(packKey)
+    expect(checkedOffline.status).toBe('ready')
+    expect(checkedOffline.warnings.some((w) => w.includes('Автономный режим'))).toBe(true)
   })
 })
