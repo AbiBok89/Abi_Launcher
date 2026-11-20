@@ -210,7 +210,40 @@ export interface AppInfo {
   defaultInstallDir: string
 }
 
-export type PackSubfolder = 'root' | 'mods' | 'screenshots' | 'crash-reports' | 'logs'
+export type PackSubfolder =
+  | 'root'
+  | 'mods'
+  | 'saves'
+  | 'shaderpacks'
+  | 'resourcepacks'
+  | 'screenshots'
+  | 'crash-reports'
+  | 'logs'
+  | 'backups'
+
+export type PackAddonCategory = 'mod' | 'shader' | 'resourcepack'
+export type PackAddonSource = 'pack' | 'user'
+
+export interface PackAddonItem {
+  fileName: string
+  name: string
+  category: PackAddonCategory
+  source: PackAddonSource
+  enabled: boolean
+  sizeBytes: number
+}
+
+export interface PackBackupItem {
+  name: string
+  modifiedAt: string
+  filesCount: number
+}
+
+export interface PackContentView {
+  addons: PackAddonItem[]
+  backups: PackBackupItem[]
+  instanceExists: boolean
+}
 
 export interface CrashReportView {
   fileName: string

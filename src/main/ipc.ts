@@ -11,7 +11,19 @@ import { logger } from '@core/log'
 import type { Result, Settings } from '@shared/types'
 
 const PackKeySchema = z.string().regex(/^[A-Za-z0-9._-]{1,200}$/)
-const SubfolderSchema = z.enum(['root', 'mods', 'screenshots', 'crash-reports', 'logs']).optional()
+const SubfolderSchema = z
+  .enum([
+    'root',
+    'mods',
+    'saves',
+    'shaderpacks',
+    'resourcepacks',
+    'screenshots',
+    'crash-reports',
+    'logs',
+    'backups'
+  ])
+  .optional()
 const JvmArgsSchema = z
   .string()
   .max(2000)

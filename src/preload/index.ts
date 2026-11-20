@@ -42,6 +42,12 @@ const api: AbiApi = {
 
   openInstanceFolder: (packKey, subfolder) => ipcRenderer.invoke('pack:openFolder', packKey, subfolder),
   getLatestCrashReport: (packKey) => ipcRenderer.invoke('pack:latestCrashReport', packKey),
+  listPackContent: (packKey) => ipcRenderer.invoke('pack:listContent', packKey),
+  togglePackAddon: (packKey, category, fileName) =>
+    ipcRenderer.invoke('pack:toggleAddon', packKey, category, fileName),
+  deletePackAddon: (packKey, category, fileName) =>
+    ipcRenderer.invoke('pack:deleteAddon', packKey, category, fileName),
+  importPackAddon: (packKey, category) => ipcRenderer.invoke('pack:importAddon', packKey, category),
   listJava: () => ipcRenderer.invoke('java:list'),
   testJava: (javaPath) => ipcRenderer.invoke('java:test', javaPath),
 

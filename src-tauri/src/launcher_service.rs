@@ -4,6 +4,7 @@ use crate::catalog_service::{
 };
 use crate::diagnostics::build_diagnostics_report;
 use crate::error::{AppResult, CancelToken, ErrorCode, LauncherError};
+use crate::fsutil::ensure_dir;
 use crate::game_launcher::{find_latest_crash_report, launch_game};
 use crate::github::parse_repo_input;
 use crate::http::{build_http_client, HostPolicy};
@@ -13,13 +14,14 @@ use crate::minecraft_installer::{ensure_minecraft_and_loader, PreparedRuntime};
 use crate::pack_updater::{
     apply_pack_sync, plan_pack_sync, read_local_manifest, read_pack_state, SyncProgressUpdate,
 };
-use crate::paths::check_relative_path;
+use crate::paths::{check_relative_path, LAUNCHER_META_DIR};
 use crate::server_ping::ping_minecraft_server;
 use crate::storage::{compute_default_memory_mb, total_system_memory_mb, ProfileStore, SettingsStore};
 use crate::types::{
     AppInfo, CatalogResult, ConflictChoice, CrashReportView, CustomRepo, GameEvent, JavaInfoView,
-    ManifestJson, NewsResult, PackInfoJson, PackStateEvent, PackStatus, PackView, PlayOptions,
-    Profile, ProfilesState, ProgressEvent, ServerStatus, Settings, SettingsPatch, Stage,
+    ManifestJson, NewsResult, PackAddonCategory, PackAddonItem, PackAddonSource, PackBackupItem,
+    PackContentView, PackInfoJson, PackStateEvent, PackStatus, PackView, PlayOptions, Profile,
+    ProfilesState, ProgressEvent, ServerStatus, Settings, SettingsPatch, Stage,
 };
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
@@ -871,6 +873,285 @@ impl LauncherService {
     pub async fn get_latest_crash_report(&self, pack_key: &str) -> AppResult<Option<CrashReportView>> {
         let instance_dir = self.instance_dir_for_pack(pack_key).await?;
         Ok(find_latest_crash_report(&instance_dir, None).await)
+    }
+
+    fn addon_folder_name(category: PackAddonCategory) -> &'static str {
+        match category {
+            PackAddonCategory::Mod => "mods",
+            PackAddonCategory::Shader => "shaderpacks",
+            PackAddonCategory::Resourcepack => "resourcepacks",
+        }
+    }
+
+    fn validate_addon_filename(file_name: &str) -> AppResult<&str> {
+        let trimmed = file_name.trim();
+        if trimmed.is_empty()
+            || trimmed == "."
+            || trimmed == ".."
+            || trimmed.contains('/')
+            || trimmed.contains('\\')
+            || trimmed.contains('\0')
+        {
+            return Err(LauncherError::new(
+                ErrorCode::Filesystem,
+                "Некорректное имя файла",
+                format!("Имя «{file_name}» содержит недопустимые символы."),
+            ));
+        }
+        Ok(trimmed)
+    }
+
+    fn format_addon_display_name(file_name: &str) -> String {
+        let mut s = file_name.to_string();
+        for suffix in [".disabled", ".jar", ".zip"] {
+            if s.to_ascii_lowercase().ends_with(suffix) {
+                let new_len = s.len() - suffix.len();
+                s.truncate(new_len);
+            }
+        }
+        let cleaned = s.replace(['_', '-'], " ");
+        let compact: Vec<&str> = cleaned.split_whitespace().collect();
+        if compact.is_empty() {
+            file_name.to_string()
+        } else {
+            compact.join(" ")
+        }
+    }
+
+    fn is_valid_addon_entry(category: PackAddonCategory, file_name: &str, is_dir: bool) -> bool {
+        let lower = file_name.to_ascii_lowercase();
+        let base = lower.strip_suffix(".disabled").unwrap_or(&lower);
+        match category {
+            PackAddonCategory::Mod => !is_dir && base.ends_with(".jar"),
+            PackAddonCategory::Shader | PackAddonCategory::Resourcepack => {
+                base.ends_with(".zip") || is_dir
+            }
+        }
+    }
+
+    async fn managed_paths_set(instance_dir: &Path) -> HashSet<String> {
+        let mut set = HashSet::new();
+        if let Some(state) = read_pack_state(instance_dir).await {
+            for rel in state.managed.keys() {
+                set.insert(rel.replace('\\', "/").to_ascii_lowercase());
+            }
+        }
+        set
+    }
+
+    pub async fn list_pack_content(&self, pack_key: &str) -> AppResult<PackContentView> {
+        let instance_dir = self.instance_dir_for_pack(pack_key).await?;
+        let instance_exists = tokio::fs::try_exists(&instance_dir).await.unwrap_or(false);
+        if !instance_exists {
+            return Ok(PackContentView {
+                addons: Vec::new(),
+                backups: Vec::new(),
+                instance_exists: false,
+            });
+        }
+
+        let managed = Self::managed_paths_set(&instance_dir).await;
+        let mut addons = Vec::new();
+
+        for category in [
+            PackAddonCategory::Mod,
+            PackAddonCategory::Shader,
+            PackAddonCategory::Resourcepack,
+        ] {
+            let folder = Self::addon_folder_name(category);
+            let dir_path = instance_dir.join(folder);
+            let Ok(mut rd) = tokio::fs::read_dir(&dir_path).await else {
+                continue;
+            };
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let Ok(meta) = entry.metadata().await else {
+                    continue;
+                };
+                let file_name = entry.file_name().to_string_lossy().into_owned();
+                if !Self::is_valid_addon_entry(category, &file_name, meta.is_dir()) {
+                    continue;
+                }
+                let lower = file_name.to_ascii_lowercase();
+                let enabled = !lower.ends_with(".disabled");
+                let active_name = if enabled {
+                    file_name.as_str()
+                } else {
+                    &file_name[..file_name.len() - ".disabled".len()]
+                };
+                let rel_key = format!("{folder}/{active_name}").to_ascii_lowercase();
+                let source = if managed.contains(&rel_key) {
+                    PackAddonSource::Pack
+                } else {
+                    PackAddonSource::User
+                };
+
+                addons.push(PackAddonItem {
+                    name: Self::format_addon_display_name(&file_name),
+                    file_name,
+                    category,
+                    source,
+                    enabled,
+                    size_bytes: if meta.is_file() { meta.len() } else { 0 },
+                });
+            }
+        }
+
+        addons.sort_by(|a, b| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+        });
+
+        let mut backups = Vec::new();
+        let backups_dir = instance_dir.join(LAUNCHER_META_DIR).join("backups");
+        if let Ok(mut rd) = tokio::fs::read_dir(&backups_dir).await {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let Ok(meta) = entry.metadata().await else {
+                    continue;
+                };
+                if !meta.is_dir() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let modified_at = meta
+                    .modified()
+                    .ok()
+                    .map(|t| {
+                        let dt: chrono::DateTime<chrono::Utc> = t.into();
+                        dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+                    })
+                    .unwrap_or_default();
+                let mut files_count = 0usize;
+                let mut stack = vec![entry.path()];
+                while let Some(cur) = stack.pop() {
+                    if let Ok(mut sub) = tokio::fs::read_dir(&cur).await {
+                        while let Ok(Some(child)) = sub.next_entry().await {
+                            if let Ok(cm) = child.metadata().await {
+                                if cm.is_dir() {
+                                    stack.push(child.path());
+                                } else {
+                                    files_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                backups.push(PackBackupItem {
+                    name,
+                    modified_at,
+                    files_count,
+                });
+            }
+        }
+        backups.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+
+        Ok(PackContentView {
+            addons,
+            backups,
+            instance_exists: true,
+        })
+    }
+
+    pub async fn toggle_pack_addon(
+        &self,
+        pack_key: &str,
+        category: PackAddonCategory,
+        file_name: &str,
+    ) -> AppResult<PackContentView> {
+        let safe_name = Self::validate_addon_filename(file_name)?;
+        let instance_dir = self.instance_dir_for_pack(pack_key).await?;
+        let folder = Self::addon_folder_name(category);
+        let managed = Self::managed_paths_set(&instance_dir).await;
+        let active_name = if safe_name.to_ascii_lowercase().ends_with(".disabled") {
+            &safe_name[..safe_name.len() - ".disabled".len()]
+        } else {
+            safe_name
+        };
+        let rel_key = format!("{folder}/{active_name}").to_ascii_lowercase();
+        if managed.contains(&rel_key) {
+            return Err(LauncherError::new(
+                ErrorCode::Filesystem,
+                "Файл защищён манифестом сборки",
+                "Основные файлы сборки нельзя отключать, чтобы сохранить совместимость с сервером.",
+            ));
+        }
+
+        let dir_path = instance_dir.join(folder);
+        let src = dir_path.join(safe_name);
+        if !tokio::fs::try_exists(&src).await.unwrap_or(false) {
+            return Err(LauncherError::new(
+                ErrorCode::Filesystem,
+                "Файл не найден",
+                format!("Файл «{safe_name}» не существует в папке {folder}/."),
+            ));
+        }
+
+        let target_name = if safe_name.to_ascii_lowercase().ends_with(".disabled") {
+            safe_name[..safe_name.len() - ".disabled".len()].to_string()
+        } else {
+            format!("{safe_name}.disabled")
+        };
+        let dst = dir_path.join(&target_name);
+        tokio::fs::rename(&src, &dst).await?;
+        self.list_pack_content(pack_key).await
+    }
+
+    pub async fn delete_pack_addon(
+        &self,
+        pack_key: &str,
+        category: PackAddonCategory,
+        file_name: &str,
+    ) -> AppResult<PackContentView> {
+        let safe_name = Self::validate_addon_filename(file_name)?;
+        let instance_dir = self.instance_dir_for_pack(pack_key).await?;
+        let folder = Self::addon_folder_name(category);
+        let managed = Self::managed_paths_set(&instance_dir).await;
+        let active_name = if safe_name.to_ascii_lowercase().ends_with(".disabled") {
+            &safe_name[..safe_name.len() - ".disabled".len()]
+        } else {
+            safe_name
+        };
+        let rel_key = format!("{folder}/{active_name}").to_ascii_lowercase();
+        if managed.contains(&rel_key) {
+            return Err(LauncherError::new(
+                ErrorCode::Filesystem,
+                "Файл защищён манифестом сборки",
+                "Нельзя удалить обязательный файл из основы сборки.",
+            ));
+        }
+
+        let target = instance_dir.join(folder).join(safe_name);
+        if let Ok(meta) = tokio::fs::metadata(&target).await {
+            if meta.is_dir() {
+                tokio::fs::remove_dir_all(&target).await?;
+            } else {
+                tokio::fs::remove_file(&target).await?;
+            }
+        }
+        self.list_pack_content(pack_key).await
+    }
+
+    pub async fn import_pack_addons(
+        &self,
+        pack_key: &str,
+        category: PackAddonCategory,
+        source_paths: Vec<PathBuf>,
+    ) -> AppResult<PackContentView> {
+        let instance_dir = self.instance_dir_for_pack(pack_key).await?;
+        let folder = Self::addon_folder_name(category);
+        let dest_dir = instance_dir.join(folder);
+        ensure_dir(&dest_dir).await?;
+
+        for src in source_paths {
+            let Some(name_os) = src.file_name() else {
+                continue;
+            };
+            let name = name_os.to_string_lossy().into_owned();
+            let safe_name = Self::validate_addon_filename(&name)?;
+            let dst = dest_dir.join(safe_name);
+            tokio::fs::copy(&src, &dst).await?;
+        }
+        self.list_pack_content(pack_key).await
     }
 
     pub async fn build_diagnostics_json(&self) -> AppResult<String> {

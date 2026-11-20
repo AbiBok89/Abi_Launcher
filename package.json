@@ -1,7 +1,7 @@
 {
   "name": "abilauncher",
   "productName": "AbiLauncher",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "AbiLauncher — лаунчер Minecraft Java Edition для авторских сборок",
   "author": "AbiBok89",
   "license": "MIT",
@@ -48,11 +48,15 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-opener": "^2.7.3",
     "@xmcl/core": "^2.16.3",
     "@xmcl/installer": "^6.3.7",
+    "lucide-react": "^1.77.0",
+    "motion": "^14.14.0",
+    "tailwindcss": "^4.3.5",
     "tar": "^7.5.23",
     "yauzl": "^3.4.0",
     "zod": "^4.6.7"

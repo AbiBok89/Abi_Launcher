@@ -86,6 +86,12 @@ if (typeof window !== 'undefined' && !window.abi) {
     openInstanceFolder: (packKey, subfolder) =>
       call('pack_open_folder', { packKey, subfolder: subfolder ?? null }),
     getLatestCrashReport: (packKey) => call('pack_latest_crash_report', { packKey }),
+    listPackContent: (packKey) => call('pack_list_content', { packKey }),
+    togglePackAddon: (packKey, category, fileName) =>
+      call('pack_toggle_addon', { packKey, category, fileName }),
+    deletePackAddon: (packKey, category, fileName) =>
+      call('pack_delete_addon', { packKey, category, fileName }),
+    importPackAddon: (packKey, category) => call('pack_import_addon', { packKey, category }),
     listJava: () => call('java_list'),
     testJava: (javaPath) => call('java_test', { javaPath }),
 

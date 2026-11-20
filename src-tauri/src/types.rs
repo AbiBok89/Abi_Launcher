@@ -322,9 +322,55 @@ pub struct AppInfo {
 pub enum PackSubfolder {
     Root,
     Mods,
+    Saves,
+    Shaderpacks,
+    Resourcepacks,
     Screenshots,
     CrashReports,
     Logs,
+    Backups,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PackAddonCategory {
+    Mod,
+    Shader,
+    Resourcepack,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PackAddonSource {
+    Pack,
+    User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackAddonItem {
+    pub file_name: String,
+    pub name: String,
+    pub category: PackAddonCategory,
+    pub source: PackAddonSource,
+    pub enabled: bool,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackBackupItem {
+    pub name: String,
+    pub modified_at: String,
+    pub files_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackContentView {
+    pub addons: Vec<PackAddonItem>,
+    pub backups: Vec<PackBackupItem>,
+    pub instance_exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

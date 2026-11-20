@@ -4,8 +4,8 @@ use crate::launcher_service::LauncherService;
 use crate::launcher_updater::{LauncherUpdater, LAUNCHER_RELEASES_PAGE_URL};
 use crate::types::{
     AppInfo, CatalogResult, ConflictChoice, CrashReportView, JavaInfoView, LauncherUpdateState,
-    LogEntry, NewsResult, PackSubfolder, PackView, PlayOptions, ProfilesState, ServerStatus,
-    Settings, SettingsPatch,
+    LogEntry, NewsResult, PackAddonCategory, PackContentView, PackSubfolder, PackView, PlayOptions,
+    ProfilesState, ServerStatus, Settings, SettingsPatch,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -358,9 +358,13 @@ pub async fn pack_open_folder(
         let target = match subfolder.unwrap_or(PackSubfolder::Root) {
             PackSubfolder::Root => inst.clone(),
             PackSubfolder::Mods => inst.join("mods"),
+            PackSubfolder::Saves => inst.join("saves"),
+            PackSubfolder::Shaderpacks => inst.join("shaderpacks"),
+            PackSubfolder::Resourcepacks => inst.join("resourcepacks"),
             PackSubfolder::Screenshots => inst.join("screenshots"),
             PackSubfolder::CrashReports => inst.join("crash-reports"),
             PackSubfolder::Logs => inst.join("logs"),
+            PackSubfolder::Backups => inst.join(".abilauncher").join("backups"),
         };
         ensure_dir(&target).await?;
         let target_str = target.to_string_lossy().into_owned();
@@ -391,6 +395,102 @@ pub async fn pack_latest_crash_report(
     Ok(ResultDto::from_result(
         state.service.get_latest_crash_report(&pack_key).await,
     ))
+}
+
+#[tauri::command]
+pub async fn pack_list_content(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    pack_key: String,
+) -> Result<ResultDto<PackContentView>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(
+        state.service.list_pack_content(&pack_key).await,
+    ))
+}
+
+#[tauri::command]
+pub async fn pack_toggle_addon(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    pack_key: String,
+    category: PackAddonCategory,
+    file_name: String,
+) -> Result<ResultDto<PackContentView>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(
+        state
+            .service
+            .toggle_pack_addon(&pack_key, category, &file_name)
+            .await,
+    ))
+}
+
+#[tauri::command]
+pub async fn pack_delete_addon(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    pack_key: String,
+    category: PackAddonCategory,
+    file_name: String,
+) -> Result<ResultDto<PackContentView>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(
+        state
+            .service
+            .delete_pack_addon(&pack_key, category, &file_name)
+            .await,
+    ))
+}
+
+#[tauri::command]
+pub async fn pack_import_addon(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    pack_key: String,
+    category: PackAddonCategory,
+) -> Result<ResultDto<Option<PackContentView>>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    let (title, filter_name, exts): (&str, &str, &[&str]) = match category {
+        PackAddonCategory::Mod => ("Выберите файл мода (.jar)", "Моды Minecraft", &["jar"]),
+        PackAddonCategory::Shader => ("Выберите архив шейдеров (.zip)", "Шейдеры", &["zip"]),
+        PackAddonCategory::Resourcepack => ("Выберите ресурс-пак (.zip)", "Ресурс-паки", &["zip"]),
+    };
+    let (tx, rx) = oneshot::channel();
+    app.dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(title)
+        .add_filter(filter_name, exts)
+        .pick_files(move |picked| {
+            let paths = picked
+                .map(|list| {
+                    list.into_iter()
+                        .filter_map(|f| f.into_path().ok())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let _ = tx.send(paths);
+        });
+    let paths = rx.await.unwrap_or_default();
+    if paths.is_empty() {
+        return Ok(ResultDto::from_result(Ok(None)));
+    }
+    let res = state
+        .service
+        .import_pack_addons(&pack_key, category, paths)
+        .await
+        .map(Some);
+    Ok(ResultDto::from_result(res))
 }
 
 #[tauri::command]

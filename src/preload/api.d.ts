@@ -8,6 +8,8 @@ import type {
   LauncherUpdateState,
   LogEntry,
   NewsResult,
+  PackAddonCategory,
+  PackContentView,
   PackStateEvent,
   PackSubfolder,
   PackView,
@@ -56,6 +58,21 @@ export interface AbiApi {
 
   openInstanceFolder(packKey: string, subfolder?: PackSubfolder): Promise<Result<boolean>>
   getLatestCrashReport(packKey: string): Promise<Result<CrashReportView | null>>
+  listPackContent(packKey: string): Promise<Result<PackContentView>>
+  togglePackAddon(
+    packKey: string,
+    category: PackAddonCategory,
+    fileName: string
+  ): Promise<Result<PackContentView>>
+  deletePackAddon(
+    packKey: string,
+    category: PackAddonCategory,
+    fileName: string
+  ): Promise<Result<PackContentView>>
+  importPackAddon(
+    packKey: string,
+    category: PackAddonCategory
+  ): Promise<Result<PackContentView | null>>
   listJava(): Promise<Result<JavaInfoView[]>>
   testJava(javaPath: string): Promise<Result<JavaInfoView>>
 
