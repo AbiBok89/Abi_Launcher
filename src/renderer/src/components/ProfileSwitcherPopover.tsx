@@ -105,11 +105,11 @@ export function ProfileSwitcherPopover({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors min-w-[215px] max-w-[260px] ${
+        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
           !activeProfile
             ? 'border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-300'
             : 'border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-[#121b2a] hover:bg-slate-100 dark:hover:bg-[#182336] text-slate-900 dark:text-slate-100'
@@ -156,7 +156,7 @@ export function ProfileSwitcherPopover({
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             role="dialog"
             aria-label="Управление локальными профилями"
-            className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1724] shadow-2xl overflow-hidden z-40 origin-bottom-left"
+            className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0f1724] shadow-2xl overflow-hidden z-50 origin-bottom-left"
           >
             <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div>

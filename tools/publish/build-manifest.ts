@@ -42,6 +42,9 @@ export const DEFAULT_EXCLUDES = [
   'tacz/.export-state.json',
   'usercache.json',
   'usernamecache.json',
+  'servers.dat_old',
+  'servers.essential.dat',
+  'essential/**',
   'launcher-index.json',
   'README.md',
   '.gitignore',
@@ -52,12 +55,28 @@ export const INITIAL_USER_FILES = [
   'options.txt',
   'optionsof.txt',
   'optionsshaders.txt',
-  'servers.dat',
-  'servers.dat_old',
   'emi.json',
   'patchouli_data.json',
   'tfcanvilhelper_gui.properties',
-  'rhino.local.properties'
+  'rhino.local.properties',
+  // Настройки карты и голосового чата — ставятся при первой установке, но не затираются при обновлениях
+  'config/xaero/**',
+  'config/xaero*.txt',
+  'config/xaerominimap*',
+  'config/xaeroworldmap*',
+  'config/xaerocommon*',
+  'config/xaerohud*',
+  'config/xaeropatreon*',
+  'config/journeymap/**',
+  'config/ftbchunks-client.snbt',
+  'local/ftblibrary-client.snbt',
+  'config/ftblibrary-client.snbt',
+  'config/voxelmap*',
+  'config/voicechat/**',
+  'config/voicechat-client.toml',
+  'config/plasmovoice/**',
+  'config/extremesoundmuffler-client.toml',
+  'ESM/**'
 ]
 
 export const OPTIONAL_MANAGED_GLOBS = [

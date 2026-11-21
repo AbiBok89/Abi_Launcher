@@ -149,6 +149,19 @@ pub fn run() {
                 let _ = app_for_upd.emit_to("main", "launcherUpdate:state", st);
             });
 
+            // Применяем настройку изменения размера окна при запуске
+            let svc_win = service.clone();
+            let app_for_win = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(settings) = svc_win.get_settings().await {
+                    if settings.resizable_window {
+                        if let Some(w) = app_for_win.get_webview_window("main") {
+                            commands::apply_window_resizable(&w, true);
+                        }
+                    }
+                }
+            });
+
             // Отложенная фоновая проверка обновлений лаунчера
             let svc_upd = service.clone();
             let upd_bg = Arc::clone(&updater);

@@ -54,6 +54,25 @@ pub async fn settings_get(window: WebviewWindow, state: State<'_, AppContext>) -
     Ok(ResultDto::from_result(state.service.get_settings().await))
 }
 
+pub fn apply_window_resizable(window: &WebviewWindow, resizable: bool) {
+    if resizable {
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(980.0_f64, 660.0_f64)));
+        let _ = window.set_max_size(None::<tauri::LogicalSize<f64>>);
+        let _ = window.set_resizable(true);
+        let _ = window.set_maximizable(true);
+    } else {
+        if window.is_maximized().unwrap_or(false) {
+            let _ = window.unmaximize();
+        }
+        let fixed = tauri::LogicalSize::new(1240.0_f64, 800.0_f64);
+        let _ = window.set_resizable(false);
+        let _ = window.set_maximizable(false);
+        let _ = window.set_min_size(Some(fixed));
+        let _ = window.set_max_size(Some(fixed));
+        let _ = window.set_size(fixed);
+    }
+}
+
 #[tauri::command]
 pub async fn settings_update(
     window: WebviewWindow,
@@ -63,7 +82,12 @@ pub async fn settings_update(
     if let Err(e) = assert_main_window(&window) {
         return Ok(ResultDto::from_result(Err(e)));
     }
-    Ok(ResultDto::from_result(state.service.update_settings(patch).await))
+    let changed_resizable = patch.resizable_window;
+    let res = state.service.update_settings(patch).await;
+    if let (Some(_), Ok(ref updated)) = (changed_resizable, &res) {
+        apply_window_resizable(&window, updated.resizable_window);
+    }
+    Ok(ResultDto::from_result(res))
 }
 
 #[tauri::command]

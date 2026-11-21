@@ -291,6 +291,7 @@ impl LauncherService {
                 auto_join_server: None,
                 extra_jvm_args: None,
                 auto_check_launcher_updates: None,
+                resizable_window: None,
                 pack_overrides: None,
             })
             .await
@@ -317,6 +318,7 @@ impl LauncherService {
                 auto_join_server: None,
                 extra_jvm_args: None,
                 auto_check_launcher_updates: None,
+                resizable_window: None,
                 pack_overrides: None,
             })
             .await
@@ -520,7 +522,7 @@ impl LauncherService {
             pack_key: pack_key.to_string(),
             operation: op_name.to_string(),
             stage: Stage::Check,
-            label: "Проверка версии и манифеста сборки...".to_string(),
+            label: "Проверка наличия новой версии сборки...".to_string(),
             bytes_done: 0,
             bytes_total: 0,
             files_done: 0,
@@ -528,6 +530,121 @@ impl LauncherService {
             speed: 0,
             cancellable: true,
         });
+
+        // При обычном запуске «Играть»: скачиваем/проверяем файлы ТОЛЬКО если вышла новая версия в релизах
+        // (или пользователь явно включил полную проверку / нажал «Проверить» / решает конфликты).
+        let can_skip_sync_if_same_version = op_name == "play"
+            && resolutions.is_empty()
+            && !settings.full_verify_on_launch
+            && entry.view.status != PackStatus::UpdateAvailable
+            && entry.view.status != PackStatus::Conflict;
+
+        if can_skip_sync_if_same_version {
+            let installed_ver = read_installed_pack_version(&settings.install_dir, pack_key).await;
+            if let (Some(inst_v), Some(local_manifest)) = (
+                installed_ver,
+                read_local_manifest(&instance_dir).await,
+            ) {
+                let info_res = {
+                    let cat = self.catalog.lock().await;
+                    cat.fetch_pack_info(&entry.source_ref, cancel).await
+                };
+                match info_res {
+                    Ok(latest_info) if latest_info.version == inst_v => {
+                        self.log.info(
+                            "launcher",
+                            format!(
+                                "Сборка {pack_key} (v{inst_v}) соответствует последнему релизу — пропускаем скачивание файлов"
+                            ),
+                        );
+                        let custom_java = settings
+                            .pack_overrides
+                            .get(pack_key)
+                            .and_then(|o| o.java_path.as_deref())
+                            .or(settings.java_path.as_deref());
+                        let rt_cb = self.make_runtime_progress_cb(pack_key, op_name, true);
+                        let rt = ensure_minecraft_and_loader(
+                            &self.http,
+                            &self.log,
+                            &install_dir,
+                            &instance_dir,
+                            &local_manifest,
+                            custom_java,
+                            full_verify_runtime,
+                            cancel,
+                            rt_cb,
+                        )
+                        .await?;
+                        let _ = save_local_pack_meta(
+                            &instance_dir,
+                            &LocalPackMeta {
+                                schema_version: 1,
+                                pack_key: pack_key.to_string(),
+                                source_ref: PackSourceRef {
+                                    pack_id: Some(latest_info.id.clone()),
+                                    news_path: Some(latest_info.news.clone()),
+                                    ..entry.source_ref
+                                },
+                                pack_info: latest_info.clone(),
+                                cover_data_url: view.cover_data_url.clone(),
+                            },
+                        )
+                        .await;
+                        view.version = latest_info.version.clone();
+                        view.name = latest_info.name.clone();
+                        view.summary = latest_info.summary.clone();
+                        view.description = latest_info.description.clone();
+                        view.server = latest_info.server.clone();
+                        view.installed_version = Some(inst_v);
+                        view.conflicts.clear();
+                        view.status = PackStatus::Ready;
+                        return Ok((view, latest_info, local_manifest, rt, instance_dir));
+                    }
+                    Err(err)
+                        if matches!(err.code, ErrorCode::Offline | ErrorCode::GithubUnavailable) =>
+                    {
+                        self.log.warn(
+                            "launcher",
+                            format!("Офлайн-запуск {pack_key} (GitHub недоступен)"),
+                        );
+                        let custom_java = settings
+                            .pack_overrides
+                            .get(pack_key)
+                            .and_then(|o| o.java_path.as_deref())
+                            .or(settings.java_path.as_deref());
+                        let rt_cb = self.make_runtime_progress_cb(pack_key, op_name, true);
+                        let rt = ensure_minecraft_and_loader(
+                            &self.http,
+                            &self.log,
+                            &install_dir,
+                            &instance_dir,
+                            &local_manifest,
+                            custom_java,
+                            false,
+                            cancel,
+                            rt_cb,
+                        )
+                        .await?;
+                        view.status = PackStatus::Ready;
+                        view.warnings = vec![
+                            "Запуск в офлайн-режиме: не удалось проверить обновления на GitHub."
+                                .to_string(),
+                        ];
+                        return Ok((view, entry.pack_info, local_manifest, rt, instance_dir));
+                    }
+                    Ok(latest_info) => {
+                        self.log.info(
+                            "launcher",
+                            format!(
+                                "Обнаружен новый релиз {pack_key}: v{inst_v} -> v{}, начинаем обновление",
+                                latest_info.version
+                            ),
+                        );
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+        }
 
         let (pack_info, manifest, plan) = {
             let fetch_res = {
@@ -741,7 +858,7 @@ impl LauncherService {
                     "Не выбран профиль игрока",
                     "Перед запуском игры создайте и выберите профиль с вашим никнеймом.",
                 )
-                .with_hint("Создайте профиль в правой нижней панели или на главном экране."),
+                .with_hint("Создайте профиль в левой нижней панели под «Настройки»."),
             );
         };
 

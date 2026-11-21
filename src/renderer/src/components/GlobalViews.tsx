@@ -516,7 +516,23 @@ export function GlobalSettingsView({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+        <div className="flex flex-col gap-2.5 pt-1">
+          <label className="flex items-center gap-2 text-xs text-slate-800 dark:text-slate-200 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.resizableWindow}
+              onChange={(e) =>
+                void runAction(
+                  () => onUpdateSettings({ resizableWindow: e.target.checked }),
+                  e.target.checked
+                    ? 'Изменение размера окна лаунчера включено'
+                    : 'Размер окна зафиксирован (1240×800)'
+                )
+              }
+              className="accent-emerald-600 dark:accent-emerald-500"
+            />
+            <span>Разрешить изменение размера окна лаунчера</span>
+          </label>
           <label className="flex items-center gap-2 text-xs text-slate-800 dark:text-slate-200 cursor-pointer">
             <input
               type="checkbox"
@@ -537,7 +553,10 @@ export function GlobalSettingsView({
               }
               className="accent-emerald-600 dark:accent-emerald-500"
             />
-            <span>Проверять SHA-256 всех файлов перед каждым запуском</span>
+            <span>
+              Проверять SHA-256 всех файлов перед каждым запуском (по умолчанию скачивание идёт
+              только при выходе новой версии)
+            </span>
           </label>
         </div>
       </section>

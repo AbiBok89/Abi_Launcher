@@ -27,6 +27,8 @@ export interface Settings {
   extraJvmArgs: string
   /** Автоматически проверять обновления лаунчера через GitHub Releases при запуске. */
   autoCheckLauncherUpdates: boolean
+  /** Разрешить свободное изменение размера окна лаунчера. */
+  resizableWindow: boolean
   packOverrides: Record<string, PackOverride>
 }
 

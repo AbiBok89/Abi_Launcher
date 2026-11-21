@@ -22,6 +22,7 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   SlidersHorizontal,
+  Square,
   Sun,
   Terminal,
   WifiOff,
@@ -518,7 +519,7 @@ export function App() {
         setConflictModal({ packKey, mode: 'play' })
       } else if (res.error.code === 'no-profile') {
         setForceProfileOpen(true)
-        pushToast('Выберите или создайте профиль рядом с кнопкой запуска', 'warn')
+        pushToast('Выберите или создайте профиль в левой нижней панели', 'warn')
       } else {
         setActionError(res.error)
       }
@@ -546,7 +547,7 @@ export function App() {
     }
     if (!activeProfile) {
       setForceProfileOpen(true)
-      pushToast('Выберите или создайте локальный профиль рядом с кнопкой запуска', 'warn')
+      pushToast('Выберите или создайте локальный профиль в левой нижней панели', 'warn')
       return
     }
     await handlePlayPack(pack.key, joinServer ? { joinServer: true } : undefined)
@@ -678,7 +679,7 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.0'}
+              v{appInfo?.version ?? '0.3.1'}
             </span>
           </div>
 
@@ -766,6 +767,17 @@ export function App() {
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
+              {settings?.resizableWindow && (
+                <button
+                  type="button"
+                  aria-label="Развернуть или восстановить окно"
+                  title="Развернуть / Восстановить"
+                  onClick={() => void window.abi.windowToggleMaximize()}
+                  className="w-11 h-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+                >
+                  <Square className="w-3 h-3" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="Закрыть лаунчер"
@@ -926,6 +938,34 @@ export function App() {
                   </span>
                 )}
               </button>
+
+              <div className="pt-1.5 mt-1 border-t border-slate-200/80 dark:border-slate-800/80">
+                <ProfileSwitcherPopover
+                  profiles={profiles}
+                  activeProfile={activeProfile}
+                  forceOpen={forceProfileOpen}
+                  onForceOpenConsumed={() => setForceProfileOpen(false)}
+                  onSelect={async (id) => {
+                    const next = unwrap(await window.abi.selectProfile(id))
+                    setProfiles(next)
+                  }}
+                  onCreate={async (name) => {
+                    const next = unwrap(await window.abi.createProfile(name))
+                    setProfiles(next)
+                    pushToast(`Профиль «${name}» создан`, 'ok')
+                  }}
+                  onRename={async (id, name) => {
+                    const next = unwrap(await window.abi.renameProfile(id, name))
+                    setProfiles(next)
+                    pushToast(`Профиль переименован в «${name}»`, 'info')
+                  }}
+                  onDelete={async (id) => {
+                    const next = unwrap(await window.abi.deleteProfile(id))
+                    setProfiles(next)
+                    pushToast('Профиль удалён', 'info')
+                  }}
+                />
+              </div>
             </div>
           </aside>
 
@@ -1734,31 +1774,21 @@ export function App() {
 
                 {/* Sticky Bottom Launch Bar */}
                 <footer className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0b111c]/95 flex flex-wrap items-center justify-between gap-4 shrink-0">
-                  <ProfileSwitcherPopover
-                    profiles={profiles}
-                    activeProfile={activeProfile}
-                    forceOpen={forceProfileOpen}
-                    onForceOpenConsumed={() => setForceProfileOpen(false)}
-                    onSelect={async (id) => {
-                      const next = unwrap(await window.abi.selectProfile(id))
-                      setProfiles(next)
-                    }}
-                    onCreate={async (name) => {
-                      const next = unwrap(await window.abi.createProfile(name))
-                      setProfiles(next)
-                      pushToast(`Профиль «${name}» создан`, 'ok')
-                    }}
-                    onRename={async (id, name) => {
-                      const next = unwrap(await window.abi.renameProfile(id, name))
-                      setProfiles(next)
-                      pushToast(`Профиль переименован в «${name}»`, 'info')
-                    }}
-                    onDelete={async (id) => {
-                      const next = unwrap(await window.abi.deleteProfile(id))
-                      setProfiles(next)
-                      pushToast('Профиль удалён', 'info')
-                    }}
-                  />
+                  <div className="min-w-0 flex items-center gap-2.5 text-xs">
+                    <span className={`font-semibold ${statusToneClass(selected.status)}`}>
+                      {STATUS_LABELS[selected.status].label}
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="font-mono-tabular text-slate-500 dark:text-slate-400 truncate">
+                      {selected.installedVersion
+                        ? selected.installedVersion === selected.version
+                          ? `v${selected.installedVersion}`
+                          : `v${selected.installedVersion} → v${selected.version}`
+                        : `v${selected.version}`}
+                    </span>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2.5">
                     {selectedPreflight &&

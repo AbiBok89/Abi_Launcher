@@ -82,9 +82,10 @@ const SettingsSchema = z.object({
   }),
   afterLaunch: z.enum(['keep', 'minimize', 'hide', 'close']),
   fullVerifyOnLaunch: z.boolean(),
-  autoJoinServer: z.boolean(),
+  autoJoinServer: z.boolean().default(false),
   extraJvmArgs: JvmArgsSchema.default(''),
   autoCheckLauncherUpdates: z.boolean().default(true),
+  resizableWindow: z.boolean().default(false),
   packOverrides: z.record(z.string().max(200), PackOverrideSchema)
 })
 
@@ -111,9 +112,10 @@ export function defaultSettings(userDataDir: string): Settings {
     resolution: { width: 1280, height: 720, fullscreen: false },
     afterLaunch: 'keep',
     fullVerifyOnLaunch: false,
-    autoJoinServer: true,
+    autoJoinServer: false,
     extraJvmArgs: '',
     autoCheckLauncherUpdates: true,
+    resizableWindow: false,
     packOverrides: {}
   }
 }

@@ -28,6 +28,44 @@ import { logger } from './log'
 
 const log = logger.scope('updater')
 
+/**
+ * Пользовательские файлы настроек (карта, голосовой чат, базовые опции),
+ * которые ставятся только при отсутствии и НИКОГДА не перезаписываются и не вызывают конфликтов.
+ */
+export const ALWAYS_INITIAL_USER_GLOBS = [
+  'options.txt',
+  'optionsof.txt',
+  'optionsshaders.txt',
+  // Карты (Xaero, JourneyMap, FTB Chunks, VoxelMap)
+  'xaero/**',
+  'XaeroWaypoints*/**',
+  'XaeroWorldMap/**',
+  'config/xaero/**',
+  'config/xaero*.txt',
+  'config/xaerominimap*',
+  'config/xaeroworldmap*',
+  'config/xaerocommon*',
+  'config/xaerohud*',
+  'config/xaeropatreon*',
+  'journeymap/**',
+  'config/journeymap/**',
+  'local/ftbchunks/**',
+  'config/ftbchunks-client.snbt',
+  'local/ftblibrary-client.snbt',
+  'config/ftblibrary-client.snbt',
+  'voxelmap/**',
+  'config/voxelmap*',
+  // Голосовой чат и звук (Simple Voice Chat, Plasmo Voice, Extreme Sound Muffler)
+  'config/voicechat/**',
+  'config/voicechat-client.toml',
+  'config/plasmovoice/**',
+  'config/extremesoundmuffler-client.toml',
+  'ESM/**'
+] as const
+
+/** Файлы, которые автоматически обновляются при синхронизации новой версии сборки без конфликта. */
+export const AUTO_SYNC_ON_UPDATE_GLOBS = ['servers.dat'] as const
+
 /** Пользовательские пути, которые лаунчер никогда не удаляет автоматически как устаревшие. */
 export const PROTECTED_USER_GLOBS = [
   'saves/**',
@@ -36,7 +74,28 @@ export const PROTECTED_USER_GLOBS = [
   'shaderpacks/**',
   'schematics/**',
   'xaero/**',
+  'XaeroWaypoints*/**',
+  'XaeroWorldMap/**',
+  'config/xaero/**',
+  'config/xaero*.txt',
+  'config/xaerominimap*',
+  'config/xaeroworldmap*',
+  'config/xaerocommon*',
+  'config/xaerohud*',
+  'config/xaeropatreon*',
   'journeymap/**',
+  'config/journeymap/**',
+  'local/ftbchunks/**',
+  'config/ftbchunks-client.snbt',
+  'local/ftblibrary-client.snbt',
+  'config/ftblibrary-client.snbt',
+  'voxelmap/**',
+  'config/voxelmap*',
+  'config/voicechat/**',
+  'config/voicechat-client.toml',
+  'config/plasmovoice/**',
+  'config/extremesoundmuffler-client.toml',
+  'ESM/**',
   'logs/**',
   'crash-reports/**',
   'backups/**',
@@ -49,6 +108,12 @@ export const PROTECTED_USER_GLOBS = [
   'usernamecache.json',
   `${LAUNCHER_META_DIR}/**`
 ] as const
+
+export function effectiveFileMode(file: ManifestFile): FileMode {
+  if (matchesAny(file.path, AUTO_SYNC_ON_UPDATE_GLOBS)) return 'managed'
+  if (file.mode === 'initial' || matchesAny(file.path, ALWAYS_INITIAL_USER_GLOBS)) return 'initial'
+  return file.mode
+}
 
 export interface ManagedFileRecord {
   sha256: string
@@ -229,9 +294,10 @@ export async function planPackSync(
       }
     }
 
+    const effMode = effectiveFileMode(file)
     if (!st) {
       toDownload.push(file)
-    } else if (file.mode === 'initial') {
+    } else if (effMode === 'initial') {
       untouchedInitial.push(file)
     } else {
       const prev = stateByKey.get(key)?.rec
@@ -252,6 +318,8 @@ export async function planPackSync(
 
       if (diskSha === file.sha256) {
         upToDate.push(file)
+      } else if (matchesAny(file.path, AUTO_SYNC_ON_UPDATE_GLOBS)) {
+        toDownload.push(file)
       } else if (prev && prev.mode === 'managed') {
         if (prev.keptByUser) {
           if (!file.required && prev.targetSha256 === file.sha256 && diskSha === prev.sha256) {
@@ -652,7 +720,8 @@ export async function applyPackSync(
     }
     const abs = safeJoin(instanceDir, file.path)
     const st = await stat(abs)
-    if (file.mode === 'initial') {
+    const effMode = effectiveFileMode(file)
+    if (effMode === 'initial') {
       const diskSha = await sha256File(abs, opts.signal)
       nextManaged[file.path] = {
         sha256: diskSha,

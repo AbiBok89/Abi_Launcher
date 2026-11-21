@@ -818,13 +818,13 @@ impl CatalogService {
         }
     }
 
-    pub async fn fetch_pack_and_manifest(
+    pub async fn fetch_pack_info(
         &self,
         src: &PackSourceRef,
         cancel: &CancelToken,
-    ) -> AppResult<(PackInfoJson, ManifestJson)> {
+    ) -> AppResult<PackInfoJson> {
         let infos = self.fetch_pack_infos_from_repo(src, cancel).await?;
-        let pack = match &src.pack_id {
+        match &src.pack_id {
             Some(id) => infos.into_iter().find(|i| &i.id == id),
             None => infos.into_iter().next(),
         }
@@ -838,7 +838,15 @@ impl CatalogService {
                     src.pack_id.as_deref().unwrap_or("")
                 ),
             )
-        })?;
+        })
+    }
+
+    pub async fn fetch_pack_and_manifest(
+        &self,
+        src: &PackSourceRef,
+        cancel: &CancelToken,
+    ) -> AppResult<(PackInfoJson, ManifestJson)> {
+        let pack = self.fetch_pack_info(src, cancel).await?;
 
         let raw_manifest = fetch_text(
             &self.http,

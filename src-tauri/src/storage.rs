@@ -106,9 +106,10 @@ pub fn default_settings(user_data_dir: &Path) -> Settings {
         },
         after_launch: AfterLaunch::Keep,
         full_verify_on_launch: false,
-        auto_join_server: true,
+        auto_join_server: false,
         extra_jvm_args: String::new(),
         auto_check_launcher_updates: true,
+        resizable_window: false,
         pack_overrides: HashMap::new(),
     }
 }
@@ -302,6 +303,9 @@ impl SettingsStore {
         }
         if let Some(ac) = patch.auto_check_launcher_updates {
             next.auto_check_launcher_updates = ac;
+        }
+        if let Some(rw) = patch.resizable_window {
+            next.resizable_window = rw;
         }
         if let Some(ov) = patch.pack_overrides {
             next.pack_overrides = ov;

@@ -20,6 +20,44 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, UNIX_EPOCH};
 
+/// Пользовательские файлы настроек (карта, голосовой чат, базовые опции),
+/// которые ставятся только при отсутствии и НИКОГДА не перезаписываются и не вызывают конфликтов
+/// ни при перезаходе, ни при обновлении сборки (даже если в старом манифесте помечены как managed).
+pub const ALWAYS_INITIAL_USER_GLOBS: &[&str] = &[
+    "options.txt",
+    "optionsof.txt",
+    "optionsshaders.txt",
+    // Карты (Xaero's Minimap / World Map, JourneyMap, FTB Chunks, VoxelMap)
+    "xaero/**",
+    "XaeroWaypoints*/**",
+    "XaeroWorldMap/**",
+    "config/xaero/**",
+    "config/xaero*.txt",
+    "config/xaerominimap*",
+    "config/xaeroworldmap*",
+    "config/xaerocommon*",
+    "config/xaerohud*",
+    "config/xaeropatreon*",
+    "journeymap/**",
+    "config/journeymap/**",
+    "local/ftbchunks/**",
+    "config/ftbchunks-client.snbt",
+    "local/ftblibrary-client.snbt",
+    "config/ftblibrary-client.snbt",
+    "voxelmap/**",
+    "config/voxelmap*",
+    // Голосовой чат и клиентский звук (Simple Voice Chat, Plasmo Voice, Extreme Sound Muffler)
+    "config/voicechat/**",
+    "config/voicechat-client.toml",
+    "config/plasmovoice/**",
+    "config/extremesoundmuffler-client.toml",
+    "ESM/**",
+];
+
+/// Файлы, которые автоматически обновляются при выходе новой версии сборки без диалога конфликта
+/// (например, servers.dat, чтобы синхронизировать актуальный список серверов).
+pub const AUTO_SYNC_ON_UPDATE_GLOBS: &[&str] = &["servers.dat"];
+
 pub const PROTECTED_USER_GLOBS: &[&str] = &[
     "saves/**",
     "screenshots/**",
@@ -27,7 +65,28 @@ pub const PROTECTED_USER_GLOBS: &[&str] = &[
     "shaderpacks/**",
     "schematics/**",
     "xaero/**",
+    "XaeroWaypoints*/**",
+    "XaeroWorldMap/**",
+    "config/xaero/**",
+    "config/xaero*.txt",
+    "config/xaerominimap*",
+    "config/xaeroworldmap*",
+    "config/xaerocommon*",
+    "config/xaerohud*",
+    "config/xaeropatreon*",
     "journeymap/**",
+    "config/journeymap/**",
+    "local/ftbchunks/**",
+    "config/ftbchunks-client.snbt",
+    "local/ftblibrary-client.snbt",
+    "config/ftblibrary-client.snbt",
+    "voxelmap/**",
+    "config/voxelmap*",
+    "config/voicechat/**",
+    "config/voicechat-client.toml",
+    "config/plasmovoice/**",
+    "config/extremesoundmuffler-client.toml",
+    "ESM/**",
     "logs/**",
     "crash-reports/**",
     "backups/**",
@@ -40,6 +99,17 @@ pub const PROTECTED_USER_GLOBS: &[&str] = &[
     "usernamecache.json",
     ".abilauncher/**",
 ];
+
+pub fn effective_file_mode(file: &ManifestFile) -> FileMode {
+    if matches_any(&file.path, AUTO_SYNC_ON_UPDATE_GLOBS) {
+        return FileMode::Managed;
+    }
+    if file.mode == FileMode::Initial || matches_any(&file.path, ALWAYS_INITIAL_USER_GLOBS) {
+        FileMode::Initial
+    } else {
+        file.mode
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -221,7 +291,8 @@ where
                         ),
                     ));
                 }
-                if file.mode != FileMode::Initial {
+                let eff_mode = effective_file_mode(file);
+                if eff_mode != FileMode::Initial {
                     let prev = state_by_key.get(&key);
                     let mtime = modified_ms(&meta);
                     let disk_sha = if !full_verify
@@ -239,6 +310,9 @@ where
 
                     if disk_sha == file.sha256 {
                         // Актуален
+                    } else if matches_any(&file.path, AUTO_SYNC_ON_UPDATE_GLOBS) {
+                        // Список серверов (servers.dat) обновляется автоматически при синхронизации новой версии
+                        to_download.push(file.clone());
                     } else if let Some(p) = prev.filter(|r| r.mode == FileMode::Managed) {
                         if p.kept_by_user.unwrap_or(false) {
                             if !file.required
@@ -834,7 +908,8 @@ where
         }
         let abs = safe_join(instance_dir, &file.path)?;
         let meta = tokio::fs::metadata(&abs).await?;
-        let sha = if file.mode == FileMode::Initial {
+        let eff_mode = effective_file_mode(file);
+        let sha = if eff_mode == FileMode::Initial {
             hash_file(&abs, ChecksumAlgo::Sha256, cancel).await?
         } else {
             file.sha256.clone()
@@ -845,7 +920,7 @@ where
                 sha256: sha,
                 size: meta.len(),
                 mtime_ms: modified_ms(&meta),
-                mode: file.mode,
+                mode: eff_mode,
                 kept_by_user: None,
                 target_sha256: None,
             },

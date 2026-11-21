@@ -68,11 +68,14 @@ pub struct Settings {
     pub resolution: Resolution,
     pub after_launch: AfterLaunch,
     pub full_verify_on_launch: bool,
+    #[serde(default)]
     pub auto_join_server: bool,
     #[serde(default)]
     pub extra_jvm_args: String,
     #[serde(default = "default_true")]
     pub auto_check_launcher_updates: bool,
+    #[serde(default)]
+    pub resizable_window: bool,
     #[serde(default)]
     pub pack_overrides: HashMap<String, PackOverride>,
 }
@@ -104,6 +107,7 @@ pub struct SettingsPatch {
     pub auto_join_server: Option<bool>,
     pub extra_jvm_args: Option<String>,
     pub auto_check_launcher_updates: Option<bool>,
+    pub resizable_window: Option<bool>,
     pub pack_overrides: Option<HashMap<String, PackOverride>>,
 }
 

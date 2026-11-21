@@ -434,3 +434,104 @@ fn forge_launch_args_use_minecraft_version_in_ignore_list_and_full_id_in_game_ar
     assert!(!log_arg.contains('/'), "Log4j path on Windows must use native separators: {log_arg}");
     assert!(log_arg.ends_with("client-1.12.xml"));
 }
+
+#[tokio::test]
+async fn preserves_map_and_voice_settings_and_auto_syncs_servers_dat() {
+    let dir = std::env::temp_dir().join(format!(
+        "abi-launcher-test-map-voice-{}",
+        std::process::id()
+    ));
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+    tokio::fs::create_dir_all(dir.join("config/voicechat"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(dir.join("config/xaero/minimap"))
+        .await
+        .unwrap();
+
+    // Настройки игрока уже изменены на диске
+    tokio::fs::write(
+        dir.join("config/voicechat/voicechat-client.properties"),
+        b"microphone=MyMic\nvolume=1.5\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(
+        dir.join("config/xaero/minimap/config.txt"),
+        b"minimapSize:250\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(dir.join("servers.dat"), b"old-servers-data")
+        .await
+        .unwrap();
+
+    let new_voice = b"microphone=Default\n";
+    let new_xaero = b"minimapSize:100\n";
+    let new_servers = b"updated-servers-v2";
+
+    // Даже если старый манифест пометил конфиги карты и voicechat как managed,
+    // лаунчер должен сохранить пользовательские файлы без конфликтов,
+    // а servers.dat — автоматически поставить на обновление без конфликта.
+    let manifest = ManifestJson {
+        schema_version: 1,
+        pack_id: "test-pack".to_string(),
+        version: "2.0.0".to_string(),
+        minecraft: "1.20.1".to_string(),
+        loader: Loader::Vanilla,
+        java: None,
+        created_at: None,
+        archives: Vec::new(),
+        files: vec![
+            ManifestFile {
+                path: "config/voicechat/voicechat-client.properties".to_string(),
+                size: new_voice.len() as u64,
+                sha256: sha256_hex(new_voice),
+                mode: FileMode::Managed,
+                required: true,
+                source: ManifestFileSource::Url {
+                    url: "https://raw.githubusercontent.com/a/b/main/v".to_string(),
+                },
+            },
+            ManifestFile {
+                path: "config/xaero/minimap/config.txt".to_string(),
+                size: new_xaero.len() as u64,
+                sha256: sha256_hex(new_xaero),
+                mode: FileMode::Managed,
+                required: true,
+                source: ManifestFileSource::Url {
+                    url: "https://raw.githubusercontent.com/a/b/main/x".to_string(),
+                },
+            },
+            ManifestFile {
+                path: "servers.dat".to_string(),
+                size: new_servers.len() as u64,
+                sha256: sha256_hex(new_servers),
+                mode: FileMode::Managed,
+                required: true,
+                source: ManifestFileSource::Url {
+                    url: "https://raw.githubusercontent.com/a/b/main/servers.dat".to_string(),
+                },
+            },
+        ],
+    };
+
+    let cancel = CancelToken::new();
+    let plan = plan_pack_sync(&dir, &manifest, true, &cancel, |_| {})
+        .await
+        .unwrap();
+
+    assert!(
+        plan.conflicts.is_empty(),
+        "Настройки карты, voicechat и servers.dat не должны вызывать конфликтов: {:?}",
+        plan.conflicts
+    );
+    assert_eq!(plan.to_download.len(), 1);
+    assert_eq!(plan.to_download[0].path, "servers.dat");
+
+    let def = crate::storage::default_settings(&dir);
+    assert!(!def.auto_join_server);
+    assert!(!def.resizable_window);
+
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+}
