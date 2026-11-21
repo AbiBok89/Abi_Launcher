@@ -68,6 +68,7 @@ import {
   formatDateRu,
   formatLoader,
   formatMemoryGb,
+  formatPackVersion,
   formatServerAddress,
   formatSpeed,
   requiredJavaMajorForMinecraft
@@ -702,7 +703,7 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.2'}
+              v{appInfo?.version ?? '0.3.3'}
             </span>
             {(updateState?.phase === 'downloading' || updateState?.phase === 'installing') && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-600/12 dark:bg-emerald-500/15 text-[11px] font-mono-tabular font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
@@ -894,9 +895,18 @@ export function App() {
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <div className="text-xs font-bold truncate leading-snug">{pack.name}</div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono-tabular">
-                        MC {pack.minecraft} · {pack.loader.type}
+                        {pack.installedVersion
+                          ? formatPackVersion(pack.installedVersion)
+                          : formatPackVersion(pack.version)}
                       </div>
-                      <div className={`text-[11px] font-medium truncate ${statusToneClass(pack.status)}`}>
+                      <div
+                        title={
+                          pack.status === 'update-available'
+                            ? `Доступна версия ${formatPackVersion(pack.version)}`
+                            : undefined
+                        }
+                        className={`text-[11px] font-medium truncate ${statusToneClass(pack.status)}`}
+                      >
                         {op
                           ? opPct !== null
                             ? `${STAGE_LABELS[op.stage]} ${opPct}%`

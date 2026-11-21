@@ -47,6 +47,12 @@ export function requiredJavaMajorForMinecraft(minecraftVersion: string): number 
   return 21
 }
 
+export function formatPackVersion(version: string): string {
+  const trimmed = version.trim()
+  if (!trimmed) return '—'
+  return /^[vV]/.test(trimmed) ? trimmed : `v${trimmed}`
+}
+
 export const STATUS_LABELS: Record<
   PackStatus,
   { label: string; tone: 'ok' | 'info' | 'warn' | 'danger' | 'neutral' }
@@ -54,7 +60,7 @@ export const STATUS_LABELS: Record<
   'not-installed': { label: 'Не установлена', tone: 'neutral' },
   checking: { label: 'Проверяется…', tone: 'info' },
   downloading: { label: 'Загружается…', tone: 'info' },
-  'update-available': { label: 'Есть обновление', tone: 'warn' },
+  'update-available': { label: 'Требуется обновление', tone: 'warn' },
   ready: { label: 'Готова', tone: 'ok' },
   conflict: { label: 'Конфликт файлов', tone: 'warn' },
   error: { label: 'Ошибка', tone: 'danger' },
