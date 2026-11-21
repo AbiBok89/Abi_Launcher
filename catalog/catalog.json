@@ -11,6 +11,11 @@
       "repo": "AbiBok89/abi_techopolis3",
       "branch": "main",
       "path": "ForLauncher/pack.json"
+    },
+    {
+      "repo": "AbiBok89/SkyGreg",
+      "branch": "main",
+      "path": "ForLauncher/pack.json"
     }
   ]
 }
