@@ -42,6 +42,12 @@ function serverKey(host: string, port?: number): string {
   return `${host}:${port ?? 25565}`
 }
 
+function isAllowed20tpsHost(host?: string | null): boolean {
+  if (!host) return false
+  const clean = host.trim().replace(/\.+$/, '').toLowerCase()
+  return clean.endsWith('.20tps.ru') && clean.length > '.20tps.ru'.length
+}
+
 const JVM_PRESETS: Array<{ label: string; args: string; title: string }> = [
   {
     label: '+ UTF-8',
@@ -87,7 +93,7 @@ export function AllServersView({
   onToast
 }: AllServersViewProps) {
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null)
-  const packsWithServers = packs.filter((p) => p.server)
+  const packsWithServers = packs.filter((p) => p.server && isAllowed20tpsHost(p.server.host))
 
   const handleCopy = (addr: string) => {
     navigator.clipboard?.writeText(addr).catch(() => undefined)
@@ -327,7 +333,7 @@ export function GlobalSettingsView({
               Обновление AbiLauncher (GitHub Releases)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-mono-tabular mt-0.5">
-              v{updateState?.currentVersion ?? appInfo?.version ?? '0.3.0'} ·{' '}
+              v{updateState?.currentVersion ?? appInfo?.version ?? '0.3.2'} ·{' '}
               {updateState?.installMode === 'portable'
                 ? 'Portable (.exe)'
                 : updateState?.installMode === 'installer'
@@ -338,14 +344,28 @@ export function GlobalSettingsView({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={updateState?.phase === 'checking' || updateState?.phase === 'downloading'}
+              disabled={
+                updateState?.phase === 'checking' ||
+                updateState?.phase === 'downloading' ||
+                updateState?.phase === 'installing'
+              }
               onClick={() => void runAction(() => onCheckUpdate())}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 ${updateState?.phase === 'checking' ? 'animate-spin' : ''}`}
+                className={`w-3.5 h-3.5 ${
+                  updateState?.phase === 'checking' || updateState?.phase === 'installing'
+                    ? 'animate-spin'
+                    : ''
+                }`}
               />
-              <span>{updateState?.phase === 'checking' ? 'Проверка…' : 'Проверить обновления'}</span>
+              <span>
+                {updateState?.phase === 'checking'
+                  ? 'Проверка…'
+                  : updateState?.phase === 'installing'
+                    ? 'Установка…'
+                    : 'Проверить и обновить'}
+              </span>
             </button>
             <button
               type="button"
@@ -392,7 +412,11 @@ export function GlobalSettingsView({
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-white dark:text-[#042117] transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Скачать v{updateState.latestVersion}</span>
+                  <span>
+                    {updateState.canAutoInstall
+                      ? `Обновить до v${updateState.latestVersion}`
+                      : `Скачать v${updateState.latestVersion}`}
+                  </span>
                 </button>
               )}
               {updateState.phase === 'downloaded' && updateState.canAutoInstall && (
@@ -411,6 +435,12 @@ export function GlobalSettingsView({
                 </span>
               )}
             </div>
+          </div>
+        )}
+
+        {updateState?.phase === 'installing' && (
+          <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            Устанавливается обновление v{updateState.latestVersion} — лаунчер сейчас перезапустится…
           </div>
         )}
 
@@ -456,7 +486,7 @@ export function GlobalSettingsView({
             }
             className="accent-emerald-600 dark:accent-emerald-500"
           />
-          <span>Автоматически проверять обновления AbiLauncher при запуске</span>
+          <span>Автоматически проверять и устанавливать обновления AbiLauncher при запуске</span>
         </label>
       </section>
 

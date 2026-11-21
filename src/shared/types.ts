@@ -268,6 +268,7 @@ export type LauncherUpdatePhase =
   | 'available'
   | 'downloading'
   | 'downloaded'
+  | 'installing'
   | 'error'
 
 export interface LauncherReleaseAssetInfo {

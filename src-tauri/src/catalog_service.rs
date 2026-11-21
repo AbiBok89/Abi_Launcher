@@ -4,6 +4,7 @@ use crate::github::raw_url;
 use crate::http::{fetch_buffer, fetch_text, is_allowed_url, sha256_text, HostPolicy};
 use crate::log::AppLogger;
 use crate::paths::{check_relative_path, path_key, LAUNCHER_META_DIR};
+use crate::server_ping::{extract_20tps_server_from_servers_dat, is_allowed_20tps_host};
 use crate::types::{
     CatalogJson, CatalogResult, Loader, ManifestArchive, ManifestFile, ManifestFileSource,
     ManifestJson, NewsItemJson, NewsItemView, NewsJson, NewsResult, PackInfoJson, PackLoadError,
@@ -514,8 +515,14 @@ impl CatalogService {
                         }
                         let installed_version =
                             read_installed_pack_version(&settings.install_dir, &pack_key).await;
+                        let inst_dir = Path::new(&settings.install_dir)
+                            .join("instances")
+                            .join(&pack_key);
                         let cover_data_url = self
                             .load_cover_data_url(&src, info.cover.as_deref(), &cache_dir, cancel)
+                            .await;
+                        let resolved_server = self
+                            .resolve_pack_server(&src, &inst_dir, &info, cancel)
                             .await;
                         let status = match &installed_version {
                             None => PackStatus::NotInstalled,
@@ -530,6 +537,8 @@ impl CatalogService {
                             pack_id: Some(info.id.clone()),
                             news_path: Some(info.news.clone()),
                         };
+                        let mut info = info;
+                        info.server = resolved_server.clone();
                         let view = PackView {
                             key: pack_key.clone(),
                             id: info.id.clone(),
@@ -547,7 +556,7 @@ impl CatalogService {
                             loader: info.loader.clone(),
                             recommended_memory_mb: info.recommended_memory_mb,
                             min_memory_mb: info.min_memory_mb,
-                            server: info.server.clone(),
+                            server: resolved_server,
                             installed_version: installed_version.clone(),
                             status,
                             last_error: None,
@@ -556,9 +565,6 @@ impl CatalogService {
                         };
 
                         if installed_version.is_some() {
-                            let inst_dir = Path::new(&settings.install_dir)
-                                .join("instances")
-                                .join(&pack_key);
                             let _ = save_local_pack_meta(
                                 &inst_dir,
                                 &LocalPackMeta {
@@ -617,6 +623,11 @@ impl CatalogService {
                     let installed =
                         read_installed_pack_version(&settings.install_dir, &item.view.key).await;
                     let mut view = item.view;
+                    let inst_dir = Path::new(&settings.install_dir)
+                        .join("instances")
+                        .join(&view.key);
+                    let local_srv = read_local_servers_dat_20tps(&inst_dir).await;
+                    view.server = local_srv.or_else(|| filter_server_20tps(view.server.take()));
                     view.installed_version = installed.clone();
                     view.status = if installed.is_some() {
                         PackStatus::Ready
@@ -816,6 +827,55 @@ impl CatalogService {
                 cached.map(|c| c.data_url)
             }
         }
+    }
+
+    pub async fn resolve_pack_server(
+        &self,
+        src: &PackSourceRef,
+        inst_dir: &Path,
+        pack_info: &PackInfoJson,
+        cancel: &CancelToken,
+    ) -> Option<ServerRef> {
+        if let Some(local) = read_local_servers_dat_20tps(inst_dir).await {
+            return Some(local);
+        }
+
+        if let Ok(raw_srv_url) = raw_url(&src.repo, &src.branch, "servers.dat") {
+            let cache_file = self
+                .user_data_dir
+                .join("cache")
+                .join("servers")
+                .join(format!("{}.dat", sha256_text(&raw_srv_url)));
+            match fetch_buffer(
+                &self.http,
+                &raw_srv_url,
+                HostPolicy::PackAssetsOnly,
+                8 * 1024 * 1024,
+                Duration::from_secs(12),
+                cancel,
+            )
+            .await
+            {
+                Ok(bytes) => {
+                    if let Some(parsed) = extract_20tps_server_from_servers_dat(&bytes) {
+                        if let Some(parent) = cache_file.parent() {
+                            let _ = ensure_dir(parent).await;
+                        }
+                        let _ = tokio::fs::write(&cache_file, &bytes).await;
+                        return Some(parsed);
+                    }
+                }
+                Err(_) => {
+                    if let Ok(cached_bytes) = tokio::fs::read(&cache_file).await {
+                        if let Some(parsed) = extract_20tps_server_from_servers_dat(&cached_bytes) {
+                            return Some(parsed);
+                        }
+                    }
+                }
+            }
+        }
+
+        filter_server_20tps(pack_info.server.clone())
     }
 
     pub async fn fetch_pack_info(
@@ -1040,7 +1100,7 @@ fn legacy_to_pack_infos(index: LegacyLauncherIndex) -> AppResult<Vec<PackInfoJso
             recommended_memory_mb: m.recommended_memory_mb,
             min_memory_mb: m.min_memory_mb,
             manifest_url: m.manifest_url,
-            server: parse_server_address(&m.name, m.server_address.as_deref()),
+            server: filter_server_20tps(parse_server_address(&m.name, m.server_address.as_deref())),
             news: "launcher-index.json".to_string(),
         };
         validate_pack_info(&info)?;
@@ -1093,7 +1153,12 @@ async fn scan_local_installed_packs(install_dir: &str) -> Vec<LoadedPackEntry> {
         if meta.schema_version != 1 || validate_pack_info(&meta.pack_info).is_err() {
             continue;
         }
-        let info = meta.pack_info;
+        let inst_dir = instances_root.join(&pack_key);
+        let mut info = meta.pack_info;
+        let resolved_srv = read_local_servers_dat_20tps(&inst_dir)
+            .await
+            .or_else(|| filter_server_20tps(info.server.clone()));
+        info.server = resolved_srv.clone();
         let view = PackView {
             key: pack_key,
             id: info.id.clone(),
@@ -1111,7 +1176,7 @@ async fn scan_local_installed_packs(install_dir: &str) -> Vec<LoadedPackEntry> {
             loader: info.loader.clone(),
             recommended_memory_mb: info.recommended_memory_mb,
             min_memory_mb: info.min_memory_mb,
-            server: info.server.clone(),
+            server: resolved_srv,
             installed_version: Some(installed_version),
             status: PackStatus::Ready,
             last_error: None,
@@ -1125,4 +1190,21 @@ async fn scan_local_installed_packs(install_dir: &str) -> Vec<LoadedPackEntry> {
         });
     }
     out
+}
+
+pub fn filter_server_20tps(srv: Option<ServerRef>) -> Option<ServerRef> {
+    srv.and_then(|mut s| {
+        let host = s.host.trim().trim_end_matches('.').to_string();
+        if is_allowed_20tps_host(&host) {
+            s.host = host;
+            Some(s)
+        } else {
+            None
+        }
+    })
+}
+
+pub async fn read_local_servers_dat_20tps(inst_dir: &Path) -> Option<ServerRef> {
+    let bytes = tokio::fs::read(inst_dir.join("servers.dat")).await.ok()?;
+    extract_20tps_server_from_servers_dat(&bytes)
 }

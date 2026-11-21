@@ -162,14 +162,17 @@ pub fn run() {
                 }
             });
 
-            // Отложенная фоновая проверка обновлений лаунчера
+            // Отложенная фоновая проверка и автоматическая установка обновлений лаунчера
             let svc_upd = service.clone();
             let upd_bg = Arc::clone(&updater);
             tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(4)).await;
+                tokio::time::sleep(Duration::from_millis(1500)).await;
                 if let Ok(settings) = svc_upd.get_settings().await {
                     if settings.auto_check_launcher_updates {
-                        let _ = upd_bg.check_for_updates().await;
+                        let svc_chk = svc_upd.clone();
+                        let _ = upd_bg
+                            .check_and_auto_update(move || !svc_chk.has_active_ops_or_games())
+                            .await;
                     }
                 }
             });

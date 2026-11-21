@@ -1,6 +1,6 @@
 use crate::catalog_service::{
-    read_installed_pack_version, save_local_pack_meta, CatalogService, LoadedPackEntry,
-    LocalPackMeta, PackSourceRef,
+    filter_server_20tps, read_installed_pack_version, read_local_servers_dat_20tps,
+    save_local_pack_meta, CatalogService, LoadedPackEntry, LocalPackMeta, PackSourceRef,
 };
 use crate::diagnostics::build_diagnostics_report;
 use crate::error::{AppResult, CancelToken, ErrorCode, LauncherError};
@@ -186,6 +186,12 @@ impl LauncherService {
             }
         }
         false
+    }
+
+    pub fn has_active_ops_or_games(&self) -> bool {
+        let has_ops = self.active_ops.lock().is_ok_and(|g| !g.is_empty());
+        let has_games = self.running_packs.lock().is_ok_and(|g| !g.is_empty());
+        has_ops || has_games
     }
 
     pub async fn get_app_info(&self) -> AppInfo {
@@ -438,9 +444,13 @@ impl LauncherService {
         });
 
         let res: AppResult<PackView> = async {
-            let (pack_info, manifest) = {
+            let (pack_info, manifest, resolved_server) = {
                 let cat = self.catalog.lock().await;
-                cat.fetch_pack_and_manifest(&entry.source_ref, &cancel).await?
+                let (p, m) = cat.fetch_pack_and_manifest(&entry.source_ref, &cancel).await?;
+                let srv = cat
+                    .resolve_pack_server(&entry.source_ref, &instance_dir, &p, &cancel)
+                    .await;
+                (p, m, srv)
             };
 
             let sync_cb = self.make_sync_progress_cb(pack_key, "check", true);
@@ -456,7 +466,7 @@ impl LauncherService {
             view.loader = pack_info.loader.clone();
             view.recommended_memory_mb = pack_info.recommended_memory_mb;
             view.min_memory_mb = pack_info.min_memory_mb;
-            view.server = pack_info.server.clone();
+            view.server = resolved_server;
             view.installed_version = installed_version.clone();
             view.conflicts = plan.conflicts;
             view.warnings = plan.warnings;
@@ -575,6 +585,12 @@ impl LauncherService {
                             rt_cb,
                         )
                         .await?;
+                        let mut latest_info = latest_info;
+                        let resolved_srv = read_local_servers_dat_20tps(&instance_dir)
+                            .await
+                            .or_else(|| filter_server_20tps(latest_info.server.clone()));
+                        latest_info.server = resolved_srv.clone();
+
                         let _ = save_local_pack_meta(
                             &instance_dir,
                             &LocalPackMeta {
@@ -594,7 +610,7 @@ impl LauncherService {
                         view.name = latest_info.name.clone();
                         view.summary = latest_info.summary.clone();
                         view.description = latest_info.description.clone();
-                        view.server = latest_info.server.clone();
+                        view.server = resolved_srv;
                         view.installed_version = Some(inst_v);
                         view.conflicts.clear();
                         view.status = PackStatus::Ready;
@@ -779,6 +795,14 @@ impl LauncherService {
         )
         .await?;
 
+        let mut pack_info = pack_info;
+        let resolved_srv = {
+            let cat = self.catalog.lock().await;
+            cat.resolve_pack_server(&entry.source_ref, &instance_dir, &pack_info, cancel)
+                .await
+        };
+        pack_info.server = resolved_srv.clone();
+
         let _ = save_local_pack_meta(
             &instance_dir,
             &LocalPackMeta {
@@ -796,6 +820,7 @@ impl LauncherService {
         .await;
 
         view.version = pack_info.version.clone();
+        view.server = resolved_srv;
         view.installed_version = Some(manifest.version.clone());
         view.conflicts.clear();
         view.status = PackStatus::Ready;

@@ -91,6 +91,12 @@ function serverKey(host: string, port?: number): string {
   return `${host}:${port ?? 25565}`
 }
 
+function isAllowed20tpsHost(host?: string | null): boolean {
+  if (!host) return false
+  const clean = host.trim().replace(/\.+$/, '').toLowerCase()
+  return clean.endsWith('.20tps.ru') && clean.length > '.20tps.ru'.length
+}
+
 export function App() {
   const [mainView, setMainView] = useState<MainView>('pack')
   const [packTab, setPackTab] = useState<PackSubTab>('overview')
@@ -179,7 +185,9 @@ export function App() {
           cur && res.packs.some((p) => p.key === cur) ? cur : res.packs[0].key
         )
         for (const p of res.packs) {
-          if (p.server) void pingOneServer(p.server.host, p.server.port)
+          if (p.server && isAllowed20tpsHost(p.server.host)) {
+            void pingOneServer(p.server.host, p.server.port)
+          }
         }
         void reloadNews()
       }
@@ -216,7 +224,12 @@ export function App() {
     })()
 
     const unsubTheme = window.abi.onSystemThemeChanged((t) => setSystemTheme(t))
-    const unsubUpdater = window.abi.onLauncherUpdateState((st) => setUpdateState(st))
+    const unsubUpdater = window.abi.onLauncherUpdateState((st) => {
+      setUpdateState(st)
+      if (st.phase === 'installing') {
+        pushToast(`Устанавливается обновление v${st.latestVersion ?? ''} — перезапуск…`, 'ok')
+      }
+    })
     const unsubProgress = window.abi.onProgress((ev) => {
       progressRef.current = { ...progressRef.current, [ev.packKey]: ev }
       setProgressByPack((prev) => ({ ...prev, [ev.packKey]: ev }))
@@ -589,7 +602,17 @@ export function App() {
   ).length
   const crashes = Object.values(lastCrashByPack)
   const hasLauncherUpdate =
-    updateState?.phase === 'available' || updateState?.phase === 'downloaded'
+    updateState?.phase === 'available' ||
+    updateState?.phase === 'downloading' ||
+    updateState?.phase === 'downloaded' ||
+    updateState?.phase === 'installing'
+  const updatePct =
+    updateState && updateState.progressBytesTotal > 0
+      ? Math.min(
+          100,
+          Math.round((updateState.progressBytesDone / updateState.progressBytesTotal) * 100)
+        )
+      : 0
 
   const packNews = useMemo(
     () => (selected && news ? news.items.filter((n) => n.packKey === selected.key) : []),
@@ -679,8 +702,16 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.1'}
+              v{appInfo?.version ?? '0.3.2'}
             </span>
+            {(updateState?.phase === 'downloading' || updateState?.phase === 'installing') && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-600/12 dark:bg-emerald-500/15 text-[11px] font-mono-tabular font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {updateState.phase === 'installing'
+                  ? `Установка v${updateState.latestVersion ?? ''}…`
+                  : `Обновление v${updateState.latestVersion ?? ''}: ${updatePct}%`}
+              </span>
+            )}
           </div>
 
           <div className="titlebar-no-drag flex items-center h-full">
@@ -915,7 +946,7 @@ export function App() {
                   <span>Все серверы</span>
                 </span>
                 <span className="font-mono-tabular text-[11px] text-slate-400">
-                  {packs.filter((p) => p.server).length}
+                  {packs.filter((p) => p.server && isAllowed20tpsHost(p.server.host)).length}
                 </span>
               </button>
 
@@ -1410,7 +1441,7 @@ export function App() {
                                       <Server className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                                       <span>Сервер сборки</span>
                                     </h2>
-                                    {selected.server &&
+                                    {selected.server && isAllowed20tpsHost(selected.server.host) &&
                                       (() => {
                                         const sKey = serverKey(
                                           selected.server.host,
@@ -1434,7 +1465,7 @@ export function App() {
                                       })()}
                                   </div>
 
-                                  {selected.server ? (
+                                  {selected.server && isAllowed20tpsHost(selected.server.host) ? (
                                     (() => {
                                       const srv = selected.server
                                       const addr = formatServerAddress(srv.host, srv.port)

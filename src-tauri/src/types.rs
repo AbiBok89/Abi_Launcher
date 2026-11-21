@@ -418,6 +418,7 @@ pub enum LauncherUpdatePhase {
     Available,
     Downloading,
     Downloaded,
+    Installing,
     Error,
 }
 

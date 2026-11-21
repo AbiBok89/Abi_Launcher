@@ -316,12 +316,59 @@ impl LauncherUpdater {
         snap
     }
 
+    pub async fn check_and_auto_update<F>(&self, can_install_now: F) -> LauncherUpdateState
+    where
+        F: Fn() -> bool,
+    {
+        let st = self.check_for_updates().await;
+        if st.phase == LauncherUpdatePhase::Available && st.can_auto_install && st.asset.is_some() {
+            let _ = self.download_update().await;
+        }
+        let after_dl = self.get_state();
+        if after_dl.phase == LauncherUpdatePhase::Downloaded
+            && after_dl.can_auto_install
+            && can_install_now()
+        {
+            self.update_state(|s| {
+                s.phase = LauncherUpdatePhase::Installing;
+                s.error = None;
+            });
+            tokio::time::sleep(Duration::from_millis(900)).await;
+            if let Err(e) = self.install_downloaded_update().await {
+                let msg = e.to_string();
+                return self.update_state(|s| {
+                    s.phase = LauncherUpdatePhase::Error;
+                    s.error = Some(msg);
+                });
+            }
+        }
+        self.get_state()
+    }
+
+    pub async fn download_and_install_if_ready<F>(&self, can_install_now: F) -> AppResult<LauncherUpdateState>
+    where
+        F: Fn() -> bool,
+    {
+        let st = self.download_update().await?;
+        if st.phase == LauncherUpdatePhase::Downloaded && st.can_auto_install && can_install_now() {
+            self.update_state(|s| {
+                s.phase = LauncherUpdatePhase::Installing;
+                s.error = None;
+            });
+            tokio::time::sleep(Duration::from_millis(900)).await;
+            self.install_downloaded_update().await?;
+        }
+        Ok(self.get_state())
+    }
+
     pub async fn check_for_updates(&self) -> LauncherUpdateState {
         {
             let cur = self.get_state();
             if matches!(
                 cur.phase,
-                LauncherUpdatePhase::Checking | LauncherUpdatePhase::Downloading
+                LauncherUpdatePhase::Checking
+                    | LauncherUpdatePhase::Downloading
+                    | LauncherUpdatePhase::Installing
             ) {
                 return cur;
             }
@@ -726,13 +773,67 @@ impl LauncherUpdater {
                     Ok(())
                 }
                 InstallMode::Installer => {
-                    std::process::Command::new(&file).spawn().map_err(|e| {
-                        LauncherError::new(
-                            ErrorCode::Unknown,
-                            "Не удалось запустить установщик",
-                            e.to_string(),
-                        )
-                    })?;
+                    if let Some(ref target_exe) = self.current_exe {
+                        let updates_root = self.user_data_dir.join("updates");
+                        ensure_dir(&updates_root).await?;
+                        let script_path = updates_root.join("apply-installer-update.ps1");
+                        let script = [
+                            "param(",
+                            "  [Parameter(Mandatory=$true)][int]$WaitPid,",
+                            "  [Parameter(Mandatory=$true)][string]$InstallerFile,",
+                            "  [Parameter(Mandatory=$true)][string]$TargetExe",
+                            ")",
+                            "$deadline = (Get-Date).AddSeconds(25)",
+                            "while ((Get-Date) -lt $deadline) {",
+                            "  if (-not (Get-Process -Id $WaitPid -ErrorAction SilentlyContinue)) { break }",
+                            "  Start-Sleep -Milliseconds 300",
+                            "}",
+                            "Start-Sleep -Milliseconds 400",
+                            "$proc = Start-Process -FilePath $InstallerFile -ArgumentList '/S' -Wait -PassThru",
+                            "if ($proc -and $proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $TargetExe)) {",
+                            "  Start-Process -FilePath $TargetExe",
+                            "}",
+                        ]
+                        .join("\r\n");
+                        tokio::fs::write(&script_path, script.as_bytes()).await?;
+
+                        std::process::Command::new("powershell.exe")
+                            .args([
+                                "-NoProfile",
+                                "-ExecutionPolicy",
+                                "Bypass",
+                                "-WindowStyle",
+                                "Hidden",
+                                "-File",
+                            ])
+                            .arg(&script_path)
+                            .arg("-WaitPid")
+                            .arg(std::process::id().to_string())
+                            .arg("-InstallerFile")
+                            .arg(&file)
+                            .arg("-TargetExe")
+                            .arg(target_exe)
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                            .map_err(|e| {
+                                LauncherError::new(
+                                    ErrorCode::Unknown,
+                                    "Не удалось запустить установщик",
+                                    e.to_string(),
+                                )
+                            })?;
+                    } else {
+                        std::process::Command::new(&file)
+                            .arg("/S")
+                            .spawn()
+                            .map_err(|e| {
+                                LauncherError::new(
+                                    ErrorCode::Unknown,
+                                    "Не удалось запустить установщик",
+                                    e.to_string(),
+                                )
+                            })?;
+                    }
                     (self.on_quit)();
                     Ok(())
                 }

@@ -535,3 +535,69 @@ async fn preserves_map_and_voice_settings_and_auto_syncs_servers_dat() {
 
     let _ = tokio::fs::remove_dir_all(&dir).await;
 }
+
+fn push_nbt_string(out: &mut Vec<u8>, s: &str) {
+    let bytes = s.as_bytes();
+    out.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+#[tokio::test]
+async fn servers_dat_extracts_only_20tps_ru_and_ping_enforces_domain() {
+    use crate::server_ping::{
+        extract_20tps_server_from_servers_dat, is_allowed_20tps_host, ping_minecraft_server,
+    };
+
+    assert!(is_allowed_20tps_host("slavka.20tps.ru"));
+    assert!(is_allowed_20tps_host("ABIBOK.20TPS.RU."));
+    assert!(!is_allowed_20tps_host("slavka.skuf.club"));
+    assert!(!is_allowed_20tps_host("20tps.ru"));
+    assert!(!is_allowed_20tps_host("fake20tps.ru"));
+
+    // Собираем валидный несжатый NBT servers.dat с двумя серверами:
+    // 1) Основа -> slavka.skuf.club (должен быть пропущен)
+    // 2) Прокси -> slavka.20tps.ru:25577 (должен быть выбран)
+    let mut nbt = Vec::new();
+    nbt.push(0x0a); // TAG_Compound root
+    push_nbt_string(&mut nbt, "");
+    nbt.push(0x09); // TAG_List "servers"
+    push_nbt_string(&mut nbt, "servers");
+    nbt.push(0x0a); // elem type TAG_Compound
+    nbt.extend_from_slice(&2i32.to_be_bytes());
+
+    // Entry 1
+    nbt.push(0x01); // TAG_Byte hidden
+    push_nbt_string(&mut nbt, "hidden");
+    nbt.push(0);
+    nbt.push(0x08); // TAG_String ip
+    push_nbt_string(&mut nbt, "ip");
+    push_nbt_string(&mut nbt, "slavka.skuf.club");
+    nbt.push(0x08); // TAG_String name
+    push_nbt_string(&mut nbt, "name");
+    push_nbt_string(&mut nbt, "Основа");
+    nbt.push(0x00);
+
+    // Entry 2
+    nbt.push(0x01); // TAG_Byte hidden
+    push_nbt_string(&mut nbt, "hidden");
+    nbt.push(0);
+    nbt.push(0x08); // TAG_String ip
+    push_nbt_string(&mut nbt, "ip");
+    push_nbt_string(&mut nbt, "slavka.20tps.ru:25577");
+    nbt.push(0x08); // TAG_String name
+    push_nbt_string(&mut nbt, "name");
+    push_nbt_string(&mut nbt, "Прокси");
+    nbt.push(0x00);
+
+    nbt.push(0x00); // root end
+
+    let parsed = extract_20tps_server_from_servers_dat(&nbt).unwrap();
+    assert_eq!(parsed.name, "Прокси");
+    assert_eq!(parsed.host, "slavka.20tps.ru");
+    assert_eq!(parsed.port, Some(25577));
+
+    // Пинг не-.20tps.ru хоста должен отклоняться сразу без сети
+    let blocked = ping_minecraft_server("slavka.skuf.club", None, 200).await;
+    assert!(!blocked.online);
+    assert!(blocked.error.unwrap_or_default().contains("20tps.ru"));
+}

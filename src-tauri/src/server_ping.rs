@@ -1,9 +1,219 @@
-use crate::types::ServerStatus;
+use crate::types::{ServerRef, ServerStatus};
+use flate2::read::GzDecoder;
 use regex::Regex;
 use serde_json::Value;
+use std::io::Read;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+pub fn is_allowed_20tps_host(host: &str) -> bool {
+    let clean = host.trim().trim_end_matches('.');
+    let lower = clean.to_ascii_lowercase();
+    lower.ends_with(".20tps.ru") && lower.len() > ".20tps.ru".len()
+}
+
+pub fn parse_server_address_20tps(name: &str, addr: &str) -> Option<ServerRef> {
+    let raw = addr.trim();
+    if raw.is_empty() || raw.len() > 260 {
+        return None;
+    }
+    let mut host = raw.to_string();
+    let mut port = None;
+    if let Some(idx) = raw.rfind(':') {
+        if idx > 0 {
+            if let Ok(p) = raw[idx + 1..].parse::<u16>() {
+                if p >= 1 {
+                    host = raw[..idx].to_string();
+                    port = Some(p);
+                }
+            }
+        }
+    }
+    let clean_host = host.trim().trim_end_matches('.');
+    let host_re = Regex::new(r"^[A-Za-z0-9.-]{1,253}$").unwrap();
+    if !host_re.is_match(clean_host) || !is_allowed_20tps_host(clean_host) {
+        return None;
+    }
+    let display_name = if name.trim().is_empty() {
+        "Сервер сборки"
+    } else {
+        name.trim()
+    };
+    Some(ServerRef {
+        name: display_name.chars().take(80).collect(),
+        host: clean_host.to_string(),
+        port,
+    })
+}
+
+struct NbtCursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> NbtCursor<'a> {
+    fn read_u8(&mut self) -> Option<u8> {
+        let b = *self.data.get(self.pos)?;
+        self.pos += 1;
+        Some(b)
+    }
+
+    fn read_u16(&mut self) -> Option<u16> {
+        let slice = self.data.get(self.pos..self.pos + 2)?;
+        self.pos += 2;
+        Some(u16::from_be_bytes([slice[0], slice[1]]))
+    }
+
+    fn read_i32(&mut self) -> Option<i32> {
+        let slice = self.data.get(self.pos..self.pos + 4)?;
+        self.pos += 4;
+        Some(i32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]))
+    }
+
+    fn skip(&mut self, n: usize) -> Option<()> {
+        if self.pos.checked_add(n)? > self.data.len() {
+            return None;
+        }
+        self.pos += n;
+        Some(())
+    }
+
+    fn read_string(&mut self) -> Option<String> {
+        let len = self.read_u16()? as usize;
+        let slice = self.data.get(self.pos..self.pos + len)?;
+        self.pos += len;
+        Some(String::from_utf8_lossy(slice).into_owned())
+    }
+
+    fn skip_payload(&mut self, tag_type: u8, depth: usize) -> Option<()> {
+        if depth > 32 {
+            return None;
+        }
+        match tag_type {
+            0 => Some(()),
+            1 => self.skip(1),
+            2 => self.skip(2),
+            3 | 5 => self.skip(4),
+            4 | 6 => self.skip(8),
+            7 => {
+                let len = self.read_i32()?;
+                if len < 0 {
+                    return None;
+                }
+                self.skip(len as usize)
+            }
+            8 => {
+                let len = self.read_u16()? as usize;
+                self.skip(len)
+            }
+            9 => {
+                let elem_type = self.read_u8()?;
+                let len = self.read_i32()?;
+                if len < 0 || len > 100_000 {
+                    return None;
+                }
+                for _ in 0..len {
+                    self.skip_payload(elem_type, depth + 1)?;
+                }
+                Some(())
+            }
+            10 => loop {
+                let inner_type = self.read_u8()?;
+                if inner_type == 0 {
+                    break Some(());
+                }
+                let name_len = self.read_u16()? as usize;
+                self.skip(name_len)?;
+                self.skip_payload(inner_type, depth + 1)?;
+            },
+            11 => {
+                let len = self.read_i32()?;
+                if len < 0 {
+                    return None;
+                }
+                self.skip((len as usize).checked_mul(4)?)
+            }
+            12 => {
+                let len = self.read_i32()?;
+                if len < 0 {
+                    return None;
+                }
+                self.skip((len as usize).checked_mul(8)?)
+            }
+            _ => None,
+        }
+    }
+}
+
+pub fn extract_20tps_server_from_servers_dat(raw_bytes: &[u8]) -> Option<ServerRef> {
+    if raw_bytes.is_empty() || raw_bytes.len() > 8 * 1024 * 1024 {
+        return None;
+    }
+    let decoded_storage;
+    let bytes: &[u8] = if raw_bytes.len() >= 2 && raw_bytes[0] == 0x1f && raw_bytes[1] == 0x8b {
+        let mut gz = GzDecoder::new(raw_bytes);
+        let mut out = Vec::new();
+        gz.read_to_end(&mut out).ok()?;
+        if out.len() > 8 * 1024 * 1024 {
+            return None;
+        }
+        decoded_storage = out;
+        &decoded_storage
+    } else {
+        raw_bytes
+    };
+
+    let mut cur = NbtCursor {
+        data: bytes,
+        pos: 0,
+    };
+    let root_type = cur.read_u8()?;
+    if root_type != 10 {
+        return None;
+    }
+    let _root_name = cur.read_string()?;
+
+    loop {
+        let tag_type = cur.read_u8()?;
+        if tag_type == 0 {
+            break;
+        }
+        let tag_name = cur.read_string()?;
+        if tag_type == 9 && tag_name == "servers" {
+            let elem_type = cur.read_u8()?;
+            let count = cur.read_i32()?;
+            if elem_type != 10 || count <= 0 || count > 500 {
+                return None;
+            }
+            for _ in 0..count {
+                let mut srv_name = String::new();
+                let mut srv_ip = String::new();
+                loop {
+                    let ft = cur.read_u8()?;
+                    if ft == 0 {
+                        break;
+                    }
+                    let fname = cur.read_string()?;
+                    if ft == 8 && fname == "name" {
+                        srv_name = cur.read_string()?;
+                    } else if ft == 8 && fname == "ip" {
+                        srv_ip = cur.read_string()?;
+                    } else {
+                        cur.skip_payload(ft, 1)?;
+                    }
+                }
+                if let Some(matched) = parse_server_address_20tps(&srv_name, &srv_ip) {
+                    return Some(matched);
+                }
+            }
+            return None;
+        } else {
+            cur.skip_payload(tag_type, 1)?;
+        }
+    }
+    None
+}
 
 fn write_varint(out: &mut Vec<u8>, mut value: i32) {
     let mut v = value as u32;
@@ -168,10 +378,13 @@ pub async fn ping_minecraft_server(
     port: Option<u16>,
     timeout_ms: u64,
 ) -> ServerStatus {
-    let clean_host = host.trim();
+    let clean_host = host.trim().trim_end_matches('.');
     let host_re = Regex::new(r"^[A-Za-z0-9.-]{1,253}$").unwrap();
     if clean_host.is_empty() || !host_re.is_match(clean_host) {
         return offline_status("Некорректный адрес сервера");
+    }
+    if !is_allowed_20tps_host(clean_host) {
+        return offline_status("Проверка доступна только для серверов *.20tps.ru");
     }
 
     let mut target_host = clean_host.to_string();

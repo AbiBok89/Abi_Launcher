@@ -628,9 +628,10 @@ pub async fn launcher_update_check(
     if let Err(e) = assert_main_window(&window) {
         return Ok(ResultDto::from_result(Err(e)));
     }
+    let svc = state.service.clone();
     Ok(ResultDto::from_result(Ok(state
         .updater
-        .check_for_updates()
+        .check_and_auto_update(move || !svc.has_active_ops_or_games())
         .await)))
 }
 
@@ -642,7 +643,13 @@ pub async fn launcher_update_download(
     if let Err(e) = assert_main_window(&window) {
         return Ok(ResultDto::from_result(Err(e)));
     }
-    Ok(ResultDto::from_result(state.updater.download_update().await))
+    let svc = state.service.clone();
+    Ok(ResultDto::from_result(
+        state
+            .updater
+            .download_and_install_if_ready(move || !svc.has_active_ops_or_games())
+            .await,
+    ))
 }
 
 #[tauri::command]
