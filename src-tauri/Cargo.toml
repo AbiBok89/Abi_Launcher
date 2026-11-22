@@ -1,6 +1,6 @@
 [package]
 name = "abilauncher"
-version = "0.3.5"
+version = "0.3.6"
 description = "AbiLauncher — лаунчер Minecraft Java Edition для авторских сборок"
 authors = ["AbiBok89"]
 license = "MIT"

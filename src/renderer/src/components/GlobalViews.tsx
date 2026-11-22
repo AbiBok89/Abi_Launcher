@@ -333,7 +333,7 @@ export function GlobalSettingsView({
               Обновление AbiLauncher (GitHub Releases)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-mono-tabular mt-0.5">
-              v{updateState?.currentVersion ?? appInfo?.version ?? '0.3.5'} ·{' '}
+              v{updateState?.currentVersion ?? appInfo?.version ?? '0.3.6'} ·{' '}
               {updateState?.installMode === 'portable'
                 ? 'Portable (.exe)'
                 : updateState?.installMode === 'installer'

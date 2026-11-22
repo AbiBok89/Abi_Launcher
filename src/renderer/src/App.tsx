@@ -705,7 +705,7 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.5'}
+              v{appInfo?.version ?? '0.3.6'}
             </span>
             {(updateState?.phase === 'downloading' || updateState?.phase === 'installing') && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-600/12 dark:bg-emerald-500/15 text-[11px] font-mono-tabular font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
@@ -963,7 +963,7 @@ export function App() {
                   </span>
                 </button>
 
-                <Tooltip content="Discord-сервер">
+                <Tooltip content="Discord-сервер" compact>
                   <button
                     type="button"
                     aria-label="Discord"
@@ -980,7 +980,7 @@ export function App() {
                   </button>
                 </Tooltip>
 
-                <Tooltip content="Telegram-канал">
+                <Tooltip content="Telegram-канал" compact>
                   <button
                     type="button"
                     aria-label="Telegram"
