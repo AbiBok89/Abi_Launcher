@@ -55,6 +55,7 @@ import { ConsoleDrawer, type PackCrashInfo } from './components/ConsoleDrawer'
 import { DownloadsDrawer, type CompletedTaskItem } from './components/DownloadsDrawer'
 import { ErrorBanner } from './components/ErrorBanner'
 import { AllServersView, GlobalSettingsView } from './components/GlobalViews'
+import { MarkdownContent } from './components/MarkdownContent'
 import { MemoryAllocationBar } from './components/MemoryAllocationBar'
 import { PackContentManager } from './components/PackContentManager'
 import { PackCover } from './components/PackCover'
@@ -703,7 +704,7 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.3'}
+              v{appInfo?.version ?? '0.3.4'}
             </span>
             {(updateState?.phase === 'downloading' || updateState?.phase === 'installing') && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-600/12 dark:bg-emerald-500/15 text-[11px] font-mono-tabular font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
@@ -1569,22 +1570,32 @@ export function App() {
                                 </div>
                               ) : (
                                 <div className="divide-y divide-slate-200 dark:divide-slate-800 border-t border-b border-slate-200 dark:border-slate-800">
-                                  {packNews.slice(0, 2).map((item) => (
-                                    <article key={item.id} className="py-3.5 space-y-1">
-                                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                          {item.title}
-                                        </h3>
-                                        <span className="text-xs font-mono-tabular text-slate-500 dark:text-slate-400">
-                                          {formatDateRu(item.date)}
-                                          {item.packVersion ? ` · ${item.packVersion}` : ''}
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
-                                        {item.body}
-                                      </p>
-                                    </article>
-                                  ))}
+                                  {packNews.slice(0, 2).map((item) => {
+                                    const isLong = item.body.length > 220 || item.body.split('\n').length > 6
+                                    return (
+                                      <article key={item.id} className="py-3.5 space-y-1.5">
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                            {item.title}
+                                          </h3>
+                                          <span className="text-xs font-mono-tabular text-slate-500 dark:text-slate-400">
+                                            {formatDateRu(item.date)}
+                                            {item.packVersion ? ` · ${item.packVersion}` : ''}
+                                          </span>
+                                        </div>
+                                        <MarkdownContent content={item.body} compact />
+                                        {isLong && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setPackTab('news')}
+                                            className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline pt-0.5"
+                                          >
+                                            Читать полностью →
+                                          </button>
+                                        )}
+                                      </article>
+                                    )
+                                  })}
                                 </div>
                               )}
                             </section>
@@ -1618,7 +1629,7 @@ export function App() {
                             ) : (
                               <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#0e1521]">
                                 {packNews.map((item) => (
-                                  <article key={item.id} className="p-5 space-y-1.5">
+                                  <article key={item.id} className="p-5 space-y-2">
                                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                                       <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                                         {item.title}
@@ -1628,9 +1639,7 @@ export function App() {
                                         {item.packVersion ? ` · ${item.packVersion}` : ''}
                                       </span>
                                     </div>
-                                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">
-                                      {item.body}
-                                    </p>
+                                    <MarkdownContent content={item.body} />
                                   </article>
                                 ))}
                               </div>
