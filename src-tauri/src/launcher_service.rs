@@ -1,3 +1,4 @@
+use crate::auth_config::{load_auth_config, AuthConfig};
 use crate::catalog_service::{
     filter_server_20tps, read_installed_pack_version, read_local_servers_dat_20tps,
     save_local_pack_meta, CatalogService, LoadedPackEntry, LocalPackMeta, PackSourceRef,
@@ -5,7 +6,7 @@ use crate::catalog_service::{
 use crate::diagnostics::build_diagnostics_report;
 use crate::error::{AppResult, CancelToken, ErrorCode, LauncherError};
 use crate::fsutil::ensure_dir;
-use crate::game_launcher::{find_latest_crash_report, launch_game};
+use crate::game_launcher::{find_latest_crash_report, launch_game, YggdrasilLaunchAuth};
 use crate::github::parse_repo_input;
 use crate::http::{build_http_client, HostPolicy};
 use crate::java_manager::{discover_java_installations, probe_java_executable};
@@ -23,6 +24,7 @@ use crate::types::{
     PackContentView, PackInfoJson, PackStateEvent, PackStatus, PackView, PlayOptions, Profile,
     ProfilesState, ProgressEvent, ServerStatus, Settings, SettingsPatch, Stage,
 };
+use crate::yggdrasil_auth::{ensure_authlib_injector, AuthSession, YggdrasilAuthStore};
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -54,6 +56,7 @@ pub struct LauncherService {
     log: AppLogger,
     settings_store: Arc<SettingsStore>,
     profile_store: Arc<ProfileStore>,
+    auth_store: Arc<YggdrasilAuthStore>,
     catalog: Arc<Mutex<CatalogService>>,
     active_ops: Arc<StdMutex<HashMap<String, CancelToken>>>,
     running_packs: Arc<StdMutex<HashSet<String>>>,
@@ -69,6 +72,7 @@ impl LauncherService {
         Self {
             settings_store: Arc::new(SettingsStore::new(user_data_dir.clone())),
             profile_store: Arc::new(ProfileStore::new(user_data_dir.clone())),
+            auth_store: Arc::new(YggdrasilAuthStore::new(user_data_dir.clone(), http.clone())),
             catalog: Arc::new(Mutex::new(catalog)),
             user_data_dir,
             launcher_version,
@@ -229,6 +233,29 @@ impl LauncherService {
 
     pub async fn update_settings(&self, patch: SettingsPatch) -> AppResult<Settings> {
         self.settings_store.update(patch).await
+    }
+
+    pub async fn get_auth_config(&self) -> AuthConfig {
+        load_auth_config(&self.user_data_dir).await
+    }
+
+    pub async fn get_auth_session(&self) -> Option<AuthSession> {
+        self.auth_store.get_session().await
+    }
+
+    pub async fn auth_login(&self, login: &str, password: &str) -> AppResult<AuthSession> {
+        let cfg = load_auth_config(&self.user_data_dir).await;
+        self.auth_store.login(&cfg, login, password).await
+    }
+
+    pub async fn auth_validate_or_refresh(&self) -> AppResult<Option<AuthSession>> {
+        let cfg = load_auth_config(&self.user_data_dir).await;
+        self.auth_store.validate_or_refresh(&cfg).await
+    }
+
+    pub async fn auth_logout(&self) -> AppResult<()> {
+        let cfg = load_auth_config(&self.user_data_dir).await;
+        self.auth_store.logout(&cfg).await
     }
 
     pub async fn get_profiles(&self) -> AppResult<ProfilesState> {
@@ -876,15 +903,22 @@ impl LauncherService {
 
     pub async fn play_pack(&self, pack_key: &str, options: PlayOptions) -> AppResult<PackView> {
         let (cancel, _guard) = self.acquire_op(pack_key)?;
-        let Some(profile): Option<Profile> = self.profile_store.get_selected_profile().await? else {
+        let auth_cfg = load_auth_config(&self.user_data_dir).await;
+        let Some(session) = self.auth_store.validate_or_refresh(&auth_cfg).await? else {
             return Err(
                 LauncherError::new(
                     ErrorCode::NoProfile,
-                    "Не выбран профиль игрока",
-                    "Перед запуском игры создайте и выберите профиль с вашим никнеймом.",
+                    "Требуется вход в аккаунт",
+                    "Войдите под логином/email и паролем вашего аккаунта перед запуском игры.",
                 )
-                .with_hint("Создайте профиль в левой нижней панели под «Настройки»."),
+                .with_hint("Откройте окно входа в левой нижней панели."),
             );
+        };
+        let profile = Profile {
+            id: session.uuid.clone(),
+            name: session.username.clone(),
+            uuid: session.uuid.clone(),
+            created_at: String::new(),
         };
 
         let prev_entry = self.get_loaded_entry(pack_key).await?;
@@ -944,6 +978,21 @@ impl LauncherService {
             cancellable: false,
         });
 
+        let agent_path = ensure_authlib_injector(
+            &self.http,
+            &runtime.shared_dir,
+            &auth_cfg.site_url,
+            &self.log,
+            &cancel,
+        )
+        .await?;
+
+        let yggdrasil_auth = Some(YggdrasilLaunchAuth {
+            access_token: &session.access_token,
+            authlib_injector_path: &agent_path,
+            yggdrasil_url: &auth_cfg.yggdrasil_url,
+        });
+
         let this = self.clone();
         let key_for_ev = pack_key.to_string();
         let view_template = view.clone();
@@ -960,6 +1009,7 @@ impl LauncherService {
             pack_info.server.as_ref(),
             auto_join,
             &self.launcher_version,
+            yggdrasil_auth,
             move |ev| {
                 let mut next_view = view_template.clone();
                 if ev.state == "started" {

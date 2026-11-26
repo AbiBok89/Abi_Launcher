@@ -71,6 +71,13 @@ if (typeof window !== 'undefined' && !window.abi) {
     deleteProfile: (id) => call('profiles_delete', { id }),
     selectProfile: (id) => call('profiles_select', { id }),
 
+    getAuthConfig: () => call('auth_get_config'),
+    getAuthSession: () => call('auth_get_session'),
+    authLogin: (login, password) => call('auth_login', { login, password }),
+    authValidateOrRefresh: () => call('auth_validate_or_refresh'),
+    authLogout: () => call('auth_logout'),
+    authOpenSitePage: (pagePath) => call('auth_open_site_page', { pagePath }),
+
     loadCatalog: () => call('catalog_load'),
     addCustomRepo: (repoInput, branch) =>
       call('catalog_add_repo', { repoInput, branch: branch ?? null }),

@@ -306,4 +306,18 @@ export interface PackStateEvent {
   warnings: string[]
 }
 
+export interface AuthConfig {
+  siteUrl: string
+  yggdrasilUrl: string
+}
+
+export interface AuthSession {
+  username: string
+  uuid: string
+  accessToken: string
+  clientToken: string
+  siteUrl: string
+  yggdrasilUrl: string
+}
+
 export type Result<T> = { ok: true; value: T } | { ok: false; error: UserError }

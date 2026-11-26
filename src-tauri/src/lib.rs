@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod auth_config;
 pub mod catalog_service;
 pub mod commands;
 pub mod diagnostics;
@@ -18,6 +19,7 @@ pub mod paths;
 pub mod server_ping;
 pub mod storage;
 pub mod types;
+pub mod yggdrasil_auth;
 
 #[cfg(test)]
 mod tests;
@@ -196,6 +198,12 @@ pub fn run() {
             commands::profiles_rename,
             commands::profiles_delete,
             commands::profiles_select,
+            commands::auth_get_config,
+            commands::auth_get_session,
+            commands::auth_login,
+            commands::auth_validate_or_refresh,
+            commands::auth_logout,
+            commands::auth_open_site_page,
             commands::catalog_load,
             commands::catalog_add_repo,
             commands::catalog_remove_repo,

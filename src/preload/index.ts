@@ -31,6 +31,13 @@ const api: AbiApi = {
   deleteProfile: (id) => ipcRenderer.invoke('profiles:delete', id),
   selectProfile: (id) => ipcRenderer.invoke('profiles:select', id),
 
+  getAuthConfig: () => ipcRenderer.invoke('auth:getConfig'),
+  getAuthSession: () => ipcRenderer.invoke('auth:getSession'),
+  authLogin: (login, password) => ipcRenderer.invoke('auth:login', login, password),
+  authValidateOrRefresh: () => ipcRenderer.invoke('auth:validateOrRefresh'),
+  authLogout: () => ipcRenderer.invoke('auth:logout'),
+  authOpenSitePage: (pagePath) => ipcRenderer.invoke('auth:openSitePage', pagePath),
+
   loadCatalog: () => ipcRenderer.invoke('catalog:load'),
   addCustomRepo: (repoInput, branch) => ipcRenderer.invoke('catalog:addRepo', repoInput, branch),
   removeCustomRepo: (repo) => ipcRenderer.invoke('catalog:removeRepo', repo),

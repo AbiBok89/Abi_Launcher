@@ -297,6 +297,12 @@ fn apply_placeholders(arg: &str, vars: &HashMap<&str, String>) -> String {
     out
 }
 
+pub struct YggdrasilLaunchAuth<'a> {
+    pub access_token: &'a str,
+    pub authlib_injector_path: &'a Path,
+    pub yggdrasil_url: &'a str,
+}
+
 pub fn build_launch_arguments(
     runtime: &PreparedRuntime,
     instance_dir: &Path,
@@ -308,6 +314,7 @@ pub fn build_launch_arguments(
     server: Option<&ServerRef>,
     auto_join: bool,
     launcher_version: &str,
+    yggdrasil_auth: Option<YggdrasilLaunchAuth<'_>>,
 ) -> Vec<String> {
     let shared_dir = &runtime.shared_dir;
     let resolved = &runtime.resolved;
@@ -390,9 +397,15 @@ pub fn build_launch_arguments(
     );
     game_vars.insert("assets_index_name", assets_index_name);
     game_vars.insert("auth_uuid", undashed_uuid);
-    game_vars.insert("auth_access_token", "0".to_string());
-    game_vars.insert("auth_session", "0".to_string());
-    game_vars.insert("user_type", "msa".to_string());
+    if let Some(ref ygg) = yggdrasil_auth {
+        game_vars.insert("auth_access_token", ygg.access_token.to_string());
+        game_vars.insert("auth_session", ygg.access_token.to_string());
+        game_vars.insert("user_type", "mojang".to_string());
+    } else {
+        game_vars.insert("auth_access_token", "0".to_string());
+        game_vars.insert("auth_session", "0".to_string());
+        game_vars.insert("user_type", "msa".to_string());
+    }
     game_vars.insert("clientid", "0".to_string());
     game_vars.insert("auth_xuid", "0".to_string());
     game_vars.insert("user_properties", "{}".to_string());
@@ -410,6 +423,16 @@ pub fn build_launch_arguments(
     }
 
     let mut args = Vec::new();
+
+    // 0. authlib-injector (-javaagent:<полный_путь>=<YGGDRASIL_API_URL>) должен идти первым аргументом JVM
+    if let Some(ref ygg) = yggdrasil_auth {
+        let abs_agent = abs_lexical(ygg.authlib_injector_path);
+        args.push(format!(
+            "-javaagent:{}={}",
+            abs_agent.display(),
+            ygg.yggdrasil_url
+        ));
+    }
 
     // 1. Память
     args.push(format!("-Xms{min_mem}M"));
@@ -563,6 +586,7 @@ pub async fn launch_game<F>(
     server: Option<&ServerRef>,
     auto_join: bool,
     launcher_version: &str,
+    yggdrasil_auth: Option<YggdrasilLaunchAuth<'_>>,
     on_game_event: F,
 ) -> AppResult<()>
 where
@@ -587,6 +611,7 @@ where
         server,
         auto_join,
         launcher_version,
+        yggdrasil_auth,
     );
 
     log.info(

@@ -1,5 +1,7 @@
 import type {
   AppInfo,
+  AuthConfig,
+  AuthSession,
   CatalogResult,
   ConflictChoice,
   CrashReportView,
@@ -43,6 +45,13 @@ export interface AbiApi {
   renameProfile(id: string, name: string): Promise<Result<ProfilesState>>
   deleteProfile(id: string): Promise<Result<ProfilesState>>
   selectProfile(id: string): Promise<Result<ProfilesState>>
+
+  getAuthConfig(): Promise<Result<AuthConfig>>
+  getAuthSession(): Promise<Result<AuthSession | null>>
+  authLogin(login: string, password: string): Promise<Result<AuthSession>>
+  authValidateOrRefresh(): Promise<Result<AuthSession | null>>
+  authLogout(): Promise<Result<void>>
+  authOpenSitePage(pagePath: string): Promise<Result<void>>
 
   loadCatalog(): Promise<Result<CatalogResult>>
   addCustomRepo(repoInput: string, branch?: string): Promise<Result<CatalogResult>>

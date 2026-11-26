@@ -33,6 +33,8 @@ import {
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import type {
   AppInfo,
+  AuthConfig,
+  AuthSession,
   CatalogResult,
   ConflictChoice,
   JavaInfoView,
@@ -60,8 +62,9 @@ import { MarkdownContent } from './components/MarkdownContent'
 import { MemoryAllocationBar } from './components/MemoryAllocationBar'
 import { PackContentManager } from './components/PackContentManager'
 import { PackCover } from './components/PackCover'
+import { AuthAccountCard } from './components/AuthAccountCard'
+import { AuthLoginModal } from './components/AuthLoginModal'
 import { PreflightCard, type PackPreflightStatus } from './components/PreflightCard'
-import { ProfileSwitcherPopover } from './components/ProfileSwitcherPopover'
 import { Tooltip } from './components/Tooltip'
 import {
   STAGE_LABELS,
@@ -106,7 +109,12 @@ export function App() {
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [consoleOpen, setConsoleOpen] = useState(false)
   const [addRepoOpen, setAddRepoOpen] = useState(false)
-  const [forceProfileOpen, setForceProfileOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authConfig, setAuthConfig] = useState<AuthConfig>({
+    siteUrl: 'https://hm575903.webhm.cloud',
+    yggdrasilUrl: 'https://hm575903.webhm.cloud/api/yggdrasil'
+  })
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null)
   const [conflictModal, setConflictModal] = useState<{
     packKey: string
     mode: 'install' | 'play'
@@ -115,7 +123,6 @@ export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [systemTheme, setSystemTheme] = useState<SystemTheme>('dark')
-  const [profiles, setProfiles] = useState<ProfilesState>({ profiles: [], selectedId: null })
   const [catalog, setCatalog] = useState<CatalogResult | null>(null)
   const [loadingCatalog, setLoadingCatalog] = useState(false)
   const [selectedPackKey, setSelectedPackKey] = useState<string | null>(null)
@@ -208,20 +215,30 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
-      const [infoRes, settingsRes, themeRes, profilesRes, logsRes, updateRes] = await Promise.all([
-        window.abi.getAppInfo(),
-        window.abi.getSettings(),
-        window.abi.getSystemTheme(),
-        window.abi.getProfiles(),
-        window.abi.getLogs(),
-        window.abi.getLauncherUpdateState()
-      ])
+      const [infoRes, settingsRes, themeRes, logsRes, updateRes, authCfgRes, authRes] =
+        await Promise.all([
+          window.abi.getAppInfo(),
+          window.abi.getSettings(),
+          window.abi.getSystemTheme(),
+          window.abi.getLogs(),
+          window.abi.getLauncherUpdateState(),
+          window.abi.getAuthConfig(),
+          window.abi.authValidateOrRefresh()
+        ])
       if (infoRes.ok) setAppInfo(infoRes.value)
       if (settingsRes.ok) setSettings(settingsRes.value)
       if (themeRes.ok) setSystemTheme(themeRes.value)
-      if (profilesRes.ok) setProfiles(profilesRes.value)
       if (logsRes.ok) setLogs(logsRes.value)
       if (updateRes.ok) setUpdateState(updateRes.value)
+      if (authCfgRes.ok) setAuthConfig(authCfgRes.value)
+      if (authRes.ok) {
+        setAuthSession(authRes.value)
+        if (!authRes.value) {
+          setAuthModalOpen(true)
+        }
+      } else {
+        setAuthModalOpen(true)
+      }
       void refreshJava()
       void reloadCatalog()
     })()
@@ -375,8 +392,16 @@ export function App() {
   }, [selected?.key, selectedOverride?.extraJvmArgs])
 
   const activeProfile = useMemo(
-    () => profiles.profiles.find((p) => p.id === profiles.selectedId) ?? null,
-    [profiles.profiles, profiles.selectedId]
+    () =>
+      authSession
+        ? {
+            id: authSession.uuid,
+            name: authSession.username,
+            uuid: authSession.uuid,
+            createdAt: ''
+          }
+        : null,
+    [authSession]
   )
 
   const systemMemMb = appInfo?.totalMemoryMb ?? 16384
@@ -534,8 +559,8 @@ export function App() {
       if (res.error.code === 'conflict') {
         setConflictModal({ packKey, mode: 'play' })
       } else if (res.error.code === 'no-profile') {
-        setForceProfileOpen(true)
-        pushToast('Выберите или создайте профиль в левой нижней панели', 'warn')
+        setAuthModalOpen(true)
+        pushToast('Войдите в аккаунт перед запуском игры', 'warn')
       } else {
         setActionError(res.error)
       }
@@ -562,8 +587,8 @@ export function App() {
       return
     }
     if (!activeProfile) {
-      setForceProfileOpen(true)
-      pushToast('Выберите или создайте локальный профиль в левой нижней панели', 'warn')
+      setAuthModalOpen(true)
+      pushToast('Войдите в аккаунт перед запуском игры', 'warn')
       return
     }
     await handlePlayPack(pack.key, joinServer ? { joinServer: true } : undefined)
@@ -705,7 +730,7 @@ export function App() {
               data-tauri-drag-region
               className="text-xs font-mono-tabular text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0"
             >
-              v{appInfo?.version ?? '0.3.6'}
+              v{appInfo?.version ?? '0.4.0'}
             </span>
             {(updateState?.phase === 'downloading' || updateState?.phase === 'installing') && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-600/12 dark:bg-emerald-500/15 text-[11px] font-mono-tabular font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap shrink-0">
@@ -1019,29 +1044,17 @@ export function App() {
               </button>
 
               <div className="pt-1.5 mt-1 border-t border-slate-200/80 dark:border-slate-800/80">
-                <ProfileSwitcherPopover
-                  profiles={profiles}
-                  activeProfile={activeProfile}
-                  forceOpen={forceProfileOpen}
-                  onForceOpenConsumed={() => setForceProfileOpen(false)}
-                  onSelect={async (id) => {
-                    const next = unwrap(await window.abi.selectProfile(id))
-                    setProfiles(next)
+                <AuthAccountCard
+                  session={authSession}
+                  siteUrl={authConfig.siteUrl}
+                  onOpenLogin={() => setAuthModalOpen(true)}
+                  onLogout={async () => {
+                    await window.abi.authLogout()
+                    setAuthSession(null)
+                    pushToast('Вы вышли из аккаунта', 'info')
                   }}
-                  onCreate={async (name) => {
-                    const next = unwrap(await window.abi.createProfile(name))
-                    setProfiles(next)
-                    pushToast(`Профиль «${name}» создан`, 'ok')
-                  }}
-                  onRename={async (id, name) => {
-                    const next = unwrap(await window.abi.renameProfile(id, name))
-                    setProfiles(next)
-                    pushToast(`Профиль переименован в «${name}»`, 'info')
-                  }}
-                  onDelete={async (id) => {
-                    const next = unwrap(await window.abi.deleteProfile(id))
-                    setProfiles(next)
-                    pushToast('Профиль удалён', 'info')
+                  onOpenSitePage={(pagePath) => {
+                    void window.abi.authOpenSitePage(pagePath)
                   }}
                 />
               </div>
@@ -1428,7 +1441,7 @@ export function App() {
                                 onFixJava={() => void applyPreflightFix(selected.key, 'java')}
                                 onFixMemory={() => void applyPreflightFix(selected.key, 'memory')}
                                 onFixAll={() => void applyPreflightFix(selected.key, 'all')}
-                                onSelectProfile={() => setForceProfileOpen(true)}
+                                onSelectProfile={() => setAuthModalOpen(true)}
                               />
                             )}
 
@@ -2032,6 +2045,19 @@ export function App() {
             }}
           />
         )}
+
+        <AuthLoginModal
+          open={authModalOpen}
+          siteUrl={authConfig.siteUrl}
+          onClose={() => setAuthModalOpen(false)}
+          onSuccess={(session) => {
+            setAuthSession(session)
+            pushToast(`Добро пожаловать, ${session.username}!`, 'ok')
+          }}
+          onOpenSitePage={(pagePath) => {
+            void window.abi.authOpenSitePage(pagePath)
+          }}
+        />
 
         {/* Toast Stack */}
         <div

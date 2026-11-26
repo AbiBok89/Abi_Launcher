@@ -2,7 +2,7 @@ use crate::catalog_service::parse_and_validate_manifest;
 use crate::error::CancelToken;
 use crate::game_launcher::{
     build_extra_jvm_args, build_launch_arguments, parse_jvm_args, supports_legacy_server_arg,
-    supports_quick_play,
+    supports_quick_play, YggdrasilLaunchAuth,
 };
 use crate::github::{parse_repo_input, raw_url};
 use crate::launcher_updater::{
@@ -23,7 +23,7 @@ use crate::types::{
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn sha256_hex(data: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -414,6 +414,7 @@ fn forge_launch_args_use_minecraft_version_in_ignore_list_and_full_id_in_game_ar
         None,
         false,
         "0.2.1",
+        None,
     );
 
     assert!(args.contains(&"-DignoreList=client-extra,fmlcore,forge-,1.20.1.jar".to_string()));
@@ -600,4 +601,75 @@ async fn servers_dat_extracts_only_20tps_ru_and_ping_enforces_domain() {
     let blocked = ping_minecraft_server("slavka.skuf.club", None, 200).await;
     assert!(!blocked.online);
     assert!(blocked.error.unwrap_or_default().contains("20tps.ru"));
+}
+
+#[test]
+fn yggdrasil_launch_args_prepend_javaagent_and_real_tokens() {
+    let runtime = PreparedRuntime {
+        shared_dir: PathBuf::from("E:/Games/Sborki/shared"),
+        version_id: "1.20.1-forge-47.4.13".to_string(),
+        resolved: ResolvedVersion {
+            id: "1.20.1-forge-47.4.13".to_string(),
+            minecraft_version: "1.20.1".to_string(),
+            version_type: "release".to_string(),
+            main_class: "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string(),
+            assets: "5".to_string(),
+            asset_index: None,
+            downloads: HashMap::new(),
+            libraries: vec![],
+            jvm_args: vec![],
+            game_args: vec![],
+            legacy_args: Some(
+                "--username ${auth_player_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type}".to_string(),
+            ),
+            logging: None,
+            java_major: Some(17),
+        },
+        java: JavaInfoView {
+            path: "C:/Java/bin/javaw.exe".to_string(),
+            major_version: 17,
+            version: "17.0.10".to_string(),
+            managed: true,
+        },
+    };
+    let profile = Profile {
+        id: "id1".to_string(),
+        name: "AbiBok".to_string(),
+        uuid: "e2a6ed124c1b302a90e7b63761b12345".to_string(),
+        created_at: String::new(),
+    };
+    let resolution = Resolution {
+        width: 1280,
+        height: 720,
+        fullscreen: false,
+    };
+    let args = build_launch_arguments(
+        &runtime,
+        Path::new("E:/Games/Sborki/instances/tfg"),
+        Path::new("E:/Games/Sborki/shared/natives"),
+        &profile,
+        4096,
+        &resolution,
+        None,
+        None,
+        false,
+        "0.3.6",
+        Some(YggdrasilLaunchAuth {
+            access_token: "secret-access-token-123",
+            authlib_injector_path: Path::new("E:/Games/My Launcher/shared/authlib-injector.jar"),
+            yggdrasil_url: "http://localhost:3000/api/yggdrasil",
+        }),
+    );
+
+    assert!(
+        args[0].starts_with("-javaagent:") && args[0].ends_with("=http://localhost:3000/api/yggdrasil"),
+        "Первый аргумент JVM должен быть -javaagent, получено: {}",
+        args[0]
+    );
+    let token_pos = args.iter().position(|a| a == "--accessToken").unwrap();
+    assert_eq!(args[token_pos + 1], "secret-access-token-123");
+    let utype_pos = args.iter().position(|a| a == "--userType").unwrap();
+    assert_eq!(args[utype_pos + 1], "mojang");
+    let user_pos = args.iter().position(|a| a == "--username").unwrap();
+    assert_eq!(args[user_pos + 1], "AbiBok");
 }

@@ -697,3 +697,84 @@ pub async fn launcher_update_open_release_page(
         .map_err(|e| LauncherError::new(ErrorCode::Unknown, "Не удалось открыть браузер", e.to_string()));
     Ok(ResultDto::from_result(res))
 }
+
+#[tauri::command]
+pub async fn auth_get_config(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+) -> Result<ResultDto<crate::auth_config::AuthConfig>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(Ok(state.service.get_auth_config().await)))
+}
+
+#[tauri::command]
+pub async fn auth_get_session(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+) -> Result<ResultDto<Option<crate::yggdrasil_auth::AuthSession>>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(Ok(state.service.get_auth_session().await)))
+}
+
+#[tauri::command]
+pub async fn auth_login(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    login: String,
+    password: String,
+) -> Result<ResultDto<crate::yggdrasil_auth::AuthSession>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(state.service.auth_login(&login, &password).await))
+}
+
+#[tauri::command]
+pub async fn auth_validate_or_refresh(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+) -> Result<ResultDto<Option<crate::yggdrasil_auth::AuthSession>>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(state.service.auth_validate_or_refresh().await))
+}
+
+#[tauri::command]
+pub async fn auth_logout(
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+) -> Result<ResultDto<()>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    Ok(ResultDto::from_result(state.service.auth_logout().await))
+}
+
+#[tauri::command]
+pub async fn auth_open_site_page(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, AppContext>,
+    page_path: String,
+) -> Result<ResultDto<()>, ()> {
+    if let Err(e) = assert_main_window(&window) {
+        return Ok(ResultDto::from_result(Err(e)));
+    }
+    let cfg = state.service.get_auth_config().await;
+    let rel = if page_path.starts_with('/') {
+        page_path
+    } else {
+        format!("/{page_path}")
+    };
+    let target = format!("{}{}", cfg.site_url.trim_end_matches('/'), rel);
+    let res = app
+        .opener()
+        .open_url(target, None::<&str>)
+        .map_err(|e| LauncherError::new(ErrorCode::Unknown, "Не удалось открыть сайт", e.to_string()));
+    Ok(ResultDto::from_result(res))
+}
